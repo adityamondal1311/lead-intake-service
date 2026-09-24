@@ -26,7 +26,7 @@ I own every commit and push. AI suggests changes and commit messages.
 
 Updated per phase. The detail is in the [AI Contribution Log](#ai-contribution-log).
 
-- Phase 0â€“1: `.gitignore`, README stub, this file's skeleton, backend skeleton (`app/main.py`,
+- Phase 0–1: `.gitignore`, README stub, this file's skeleton, backend skeleton (`app/main.py`,
   `app/core/config.py`, `app/api/routes/health.py`, test), Vite frontend cleanup, CI workflow.
 
 ## Human-Written / Human-Decided Sections
@@ -43,7 +43,7 @@ challenged, not treated as fixed.
 
 ### D1. Modular monolith
 
-One FastAPI service with strict layering: **routes â†’ services â†’ repositories â†’ SQLAlchemy**.
+One FastAPI service with strict layering: **routes → services → repositories → SQLAlchemy**.
 The domain is small (leads, activities, webhook deliveries). Microservices would add network hops,
 deployment units and failure modes without solving a real problem here. Clear module boundaries
 keep extraction possible later.
@@ -76,8 +76,8 @@ activity types without inventing an endpoint the brief did not ask for.
 
 ### D6. Two separate deduplication keys
 
-- Meta `lead_id` â†’ `leads.external_id` (UNIQUE) â†’ **lead identity**.
-- `event_id` â†’ `webhook_events(source, external_event_id)` (UNIQUE) â†’ **delivery idempotency**.
+- Meta `lead_id` → `leads.external_id` (UNIQUE) → **lead identity**.
+- `event_id` → `webhook_events(source, external_event_id)` (UNIQUE) → **delivery idempotency**.
 
 A retry of the same delivery is ignored. A new delivery about the same lead can update it.
 
@@ -118,19 +118,19 @@ lint, test and build.
 Condensed, in order.
 
 1. *"Read the assignment PDF and email, and build a complete working plan: architecture, data model,
-   webhook reliability, testing, deployment, review questions."* â†’ produced the working plan.
+   webhook reliability, testing, deployment, review questions."* → produced the working plan.
 2. *"Review the plan and decide the ambiguous parts: statuses, what LEAD_UPDATED means, payload
-   shape, deployment platform."* â†’ decisions D4â€“D10. Railway was chosen for managed Postgres and
+   shape, deployment platform."* → decisions D4–D10. Railway was chosen for managed Postgres and
    Docker support with the least setup time.
-3. *"Write a persistent project context file with the frozen decisions and a phase plan."* â†’ the
+3. *"Write a persistent project context file with the frozen decisions and a phase plan."* → the
    spec used to drive code generation phase by phase.
 4. *"Complete phases 0 and 1: repo, docs seed, backend and frontend skeletons, CI. Commit as me and
-   push to GitHub."* â†’ this commit set.
+   push to GitHub."* → this commit set.
 
 ## Verification Process
 
 - Every phase ends with `ruff check`, `ruff format --check` and `pytest` (backend), and
-  `npm run lint` and `npm run build` (frontend). CI repeats these on every push.
+  `npm run lint` (oxlint) and `npm run build` (`tsc -b` + Vite) (frontend). CI repeats these on every push.
 - I read generated code before committing. Anything I can't explain gets simplified or rewritten.
 - Backend behaviour that depends on the database (constraints, locking, idempotency) will be tested
   against real PostgreSQL, not SQLite.
@@ -140,7 +140,24 @@ Condensed, in order.
 ### Phase 0: Requirements and decisions
 - **AI generated:** first drafts of the decision write-ups, `.gitignore`, the README stub and this
   file's structure.
-- **Human decided:** every decision in D1â€“D11, especially the LEAD_UPDATED interpretation, the
+- **Human decided:** every decision in D1–D11, especially the LEAD_UPDATED interpretation, the
   two-key dedup model, and keeping auth and queues out of scope.
 - **Verified by:** checking each decision against the assignment brief and the evaluation criteria.
 
+### Phase 1: Skeleton
+- **AI generated:** uv project and ruff/pytest config, `create_app()` factory, `Settings`
+  (pydantic-settings), `/health` route and test, the cleaned-up Vite React-TS app, and the GitHub
+  Actions workflow. Toolchain install (Git, Node LTS, uv) on the dev machine.
+- **Human decided:** the app-factory pattern (lets tests build an app with test settings), no empty
+  placeholder packages (each folder arrives with the commit that first gives it code), and CI set up
+  from day one.
+- **Caught and corrected during review:**
+  - `uv init` defaulted to Python 3.14. It was pinned back to 3.12 (`requires-python = ">=3.12,<3.13"`,
+    `.python-version`) to match the agreed stack, and the lockfile was regenerated.
+  - The current Vite template ships `oxlint` instead of ESLint. It was kept, since it is fast and
+    `npm run lint` behaves the same.
+  - `strict: true` was made explicit in `tsconfig.app.json`.
+  - CI uses Node 24, because Vite 8 needs Node ≥ 20.19.
+- **Verified by:** `ruff check`, `ruff format --check` and `pytest` passing locally on Python 3.12.
+  The frontend `lint` and `build` pass. Manual checks: `/health` returns `{"status":"ok"}`, `/docs`
+  loads, and the Vite dev server serves the app.

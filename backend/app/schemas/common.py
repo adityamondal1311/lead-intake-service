@@ -37,4 +37,25 @@ class ErrorBody(CamelModel):
 class ErrorResponse(CamelModel):
     """Envelope for every non-2xx response."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "error": {
+                        "code": "VALIDATION_ERROR",
+                        "message": "Request validation failed",
+                        "details": [
+                            {
+                                "location": "query",
+                                "field": "limit",
+                                "message": "Input should be less than or equal to 100",
+                            }
+                        ],
+                        "requestId": "3f2a9c1e5b7d4e0a8c6b2d4f1e3a5c7b",
+                    }
+                }
+            ]
+        }
+    )
+
     error: ErrorBody

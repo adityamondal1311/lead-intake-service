@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 from app.api.routes import health, leads, webhook
 from app.core.config import Settings, get_settings
@@ -28,6 +29,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         expose_headers=[REQUEST_ID_HEADER],
     )
     register_exception_handlers(app)
+
+    # Opening the bare backend URL shows the API docs instead of a 404.
+    @app.get("/", include_in_schema=False)
+    def root() -> RedirectResponse:
+        return RedirectResponse("/docs")
+
     app.include_router(health.router)
     app.include_router(leads.router)
     app.include_router(webhook.router)

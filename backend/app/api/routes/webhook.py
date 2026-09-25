@@ -105,6 +105,35 @@ def _parse_payload(body: bytes) -> tuple[MetaLeadPayload, dict[str, Any]]:
     "activity in one transaction. The body is the normalized post-enrichment payload "
     "(see `MetaLeadPayload`).",
     responses={
+        200: {
+            "description": "Processed, or acknowledged as a duplicate delivery",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "created": {
+                            "summary": "New lead",
+                            "value": {
+                                "status": "processed",
+                                "outcome": "CREATED",
+                                "leadId": "0b6f1c9e-3a4d-4c2b-9e8f-7a6b5c4d3e2f",
+                            },
+                        },
+                        "updated": {
+                            "summary": "Existing lead, fields changed",
+                            "value": {
+                                "status": "processed",
+                                "outcome": "UPDATED",
+                                "leadId": "0b6f1c9e-3a4d-4c2b-9e8f-7a6b5c4d3e2f",
+                            },
+                        },
+                        "duplicate": {
+                            "summary": "Same event delivered again",
+                            "value": {"status": "duplicate"},
+                        },
+                    }
+                }
+            },
+        },
         401: {"model": ErrorResponse, "description": "Missing or invalid signature"},
         413: {"model": ErrorResponse, "description": "Body too large"},
         422: {"model": ErrorResponse, "description": "Invalid payload"},

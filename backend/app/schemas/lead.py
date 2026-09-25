@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime
 
+from pydantic import ConfigDict
+
 from app.models.enums import LeadStatus
 from app.schemas.activity import ActivityRead
 from app.schemas.common import CamelModel, Pagination
@@ -38,6 +40,8 @@ class LeadDetailResponse(CamelModel):
 
 
 class LeadStatusUpdate(CamelModel):
+    model_config = ConfigDict(json_schema_extra={"examples": [{"status": "CONTACTED"}]})
+
     status: LeadStatus
 
 

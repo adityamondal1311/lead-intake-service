@@ -24,7 +24,25 @@ class MetaLeadPayload(BaseModel):
     """
 
     # Unknown fields are ignored so the sender can add fields without breaking ingestion.
-    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+    model_config = ConfigDict(
+        extra="ignore",
+        str_strip_whitespace=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "event_id": "evt_123",
+                    "lead_id": "meta_lead_123",
+                    "created_time": "2026-09-24T10:00:00+0000",
+                    "campaign_id": "cmp_coworking_delhi",
+                    "form_id": "form_workspace_enquiry",
+                    "ad_id": "ad_1",
+                    "full_name": "Rahul Sharma",
+                    "email": "rahul@example.com",
+                    "phone": "+919999999999",
+                }
+            ]
+        },
+    )
 
     event_id: str = Field(min_length=1, max_length=255)
     lead_id: str = Field(min_length=1, max_length=255)

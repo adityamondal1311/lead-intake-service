@@ -112,7 +112,9 @@ migrations can reference them predictably.
 
 ## API
 
-Interactive docs: `http://localhost:8000/docs` (OpenAPI at `/openapi.json`). JSON is camelCase.
+Interactive docs: `http://localhost:8000/docs` (the bare `/` redirects there; OpenAPI at
+`/openapi.json`), with example requests and responses for the webhook, the status update and the
+error envelope. JSON is camelCase.
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -478,6 +480,25 @@ tests were confirmed to fail when the row lock or the timestamp fix is removed.
 - One access log line per request: method, path, status, duration. Request bodies and query strings
   are never logged, because they carry PII (lead contact details, search terms).
 
+## Backend checkpoint
+
+Run from a freshly migrated, seeded database against a live server (`uvicorn` + the scripts
+above); each step is also covered by the automated tests:
+
+| Step | Result |
+|---|---|
+| `GET /` | 307 → `/docs`; `/docs` and `/openapi.json` 200 |
+| `GET /health` | `{"status":"ok","database":"ok"}` (503 when Postgres is down) |
+| `scripts.seed` twice | 25 created / 4 updated / 1 unchanged / 39 status changes, then 30 duplicates and nothing written |
+| Signed webhook, same event again, new event with a changed phone | `CREATED` → `duplicate` → `UPDATED` |
+| `PATCH /leads/{id}/status` | 200, `STATUS_CHANGED` recorded |
+| `GET /leads/{id}` | status `CONTACTED`, phone updated; timeline `STATUS_CHANGED` → `LEAD_UPDATED` (phone diff) → `LEAD_CREATED` |
+| Server log | zero occurrences of any lead name, email or phone |
+
+Backend test suite: 170 tests (unit + integration against real PostgreSQL), including
+concurrency, rollback and no-PII-in-logs tests that were each confirmed to fail when the
+protection they guard is removed.
+
 ## Progress
 
 - [x] Phase 0: requirements frozen, ambiguities resolved (see AGENT.md)
@@ -492,4 +513,7 @@ tests were confirmed to fail when the row lock or the timestamp fix is removed.
       validation, transactional lead ingestion with LEAD_CREATED audit, test sender, tests
 - [x] Phase 6: webhook idempotency (ON CONFLICT), repeat events with LEAD_UPDATED diffs and
       UNCHANGED, race-safe lead creation, concurrency tests
-- [ ] Phase 7+: backend hardening review, frontend, Docker, deployment
+- [x] Phase 7: hardening and verification: strict configuration, automated no-PII-in-logs and
+      CORS tests, idempotent demo seed through the real services, OpenAPI examples. **Backend
+      complete** (see [Backend checkpoint](#backend-checkpoint))
+- [ ] Phase 8+: frontend, Docker, deployment

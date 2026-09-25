@@ -39,6 +39,8 @@ Updated per phase; the detail is in the [AI Contribution Log](#ai-contribution-l
   test sender script, webhook tests.
 - Phase 6: `ON CONFLICT` delivery and lead inserts, lead locking, diff and update flow, reliability
   and concurrency tests, README idempotency section.
+- Phase 7: strict configuration types and CORS origin validation, PII-in-logs and CORS tests,
+  seed script, OpenAPI examples, root redirect.
 
 ## Human-Written / Human-Decided Sections
 
@@ -151,6 +153,16 @@ Condensed, in order.
    enabled WSL2 on the dev machine (the reboot was done by me).
 6. *"Start Phase 3. Two commits: models + migration once reviewed, applied and verified; then
    constraint tests + docs."* → the Phase 3 commit set.
+7. *"Phase 4: list, detail and status APIs; three commits (read APIs; transactional status
+   update; tests + docs)."* → Phase 4. The concurrency probe it prompted found the timeline-order
+   bug, shipped as a separate `fix:` commit.
+8. *"Phase 5: Meta webhook — signature + handshake, ingestion, tests; new leads only for now."*
+   → Phase 5, with the temporary 500 for repeat events agreed up front.
+9. *"Phase 6: idempotency and repeat events. Decisions: partial updates (missing fields never
+   erase data) and a minimal duplicate response. Prove the concurrency tests fail when the
+   protection is removed."* → Phase 6.
+10. *"Phase 7: hardening, not features — strict config, automated no-PII-in-logs and CORS tests,
+    a seed script through the real services, focused OpenAPI examples."* → Phase 7.
 
 ## AI Output Review Standard
 
@@ -535,3 +547,18 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   prints the refusal and exits 1; all five statuses present; a reopened lead's timeline reads
   NEW → CONTACTED → QUALIFIED → LOST → QUALIFIED. Tests cover the audit trail, the second run
   writing nothing, and the production guard; 170 tests pass.
+
+### Phase 7: OpenAPI examples and backend checkpoint
+- **AI generated:** examples for the webhook request, its three 200 responses (created, updated,
+  duplicate), the status update body and the error envelope; `/` → `/docs` redirect; README
+  backend checkpoint table.
+- **Human decided:** keep examples focused on what a reviewer will try in `/docs`, not every
+  schema; no landing page, just the redirect.
+- **Caught and corrected:** the first error-envelope example used `"details": null`, which
+  FastAPI drops when rendering examples; replaced with a validation-error example whose
+  `details` list shows the full envelope shape.
+- **Verified by (backend checkpoint):** from a freshly migrated database: seed twice (25 created,
+  4 updated, 1 unchanged, 39 status changes; then 30 duplicates, nothing written); `/` → 307 to
+  `/docs`; `/docs`, `/openapi.json`, `/health` OK; signed webhook `CREATED` → same event
+  `duplicate` → changed phone `UPDATED`; PATCH status; detail shows the three activities in
+  order; zero PII in the server log; 170 tests pass; ruff clean.

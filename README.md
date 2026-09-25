@@ -57,6 +57,6 @@ npm run lint && npm run build
 - [x] Phase 1: backend and frontend skeletons, CI
 - [ ] Phase 2: PostgreSQL, SQLAlchemy, Alembic, DB-aware health check
   - [x] Database infrastructure: Postgres via Docker Compose, settings, engine/session, Alembic
-  - [ ] DB-aware `/health`, JSON logging, request IDs
+  - [x] DB-aware `/health` (503 when Postgres is unreachable), JSON logging, request IDs
   - [ ] Tests against real Postgres, CI Postgres service
 - [ ] Phase 3+: data model, lead APIs, webhook, frontend, tests, Docker, deployment

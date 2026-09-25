@@ -170,6 +170,20 @@ Condensed, in order.
 - **Human decided:** split Phase 2 into three commits (infrastructure; health + observability;
   tests + CI + docs), Postgres 17, a separate `lead_intake_test` database so tests never touch dev data.
 - **Verified by:** `ruff check`/`ruff format --check`, `pytest`, `alembic upgrade head --sql`
-  (offline) and a manual check of URL normalization. A live `docker compose up` +
-  `alembic upgrade head` check is pending Docker setup on the dev machine and is done before the
-  next commit.
+  (offline) and a manual check of URL normalization. The first commit was pushed before Docker was
+  installed on the dev machine; the live check followed before the second commit: `docker compose up`
+  → healthy Postgres, `lead_intake_test` created, `alembic upgrade head` connects to both databases.
+
+### Phase 2: Health checks and request logging
+- **AI generated:** `/health` running `SELECT 1` with a 503 response when the database is
+  unreachable, a stdlib JSON log formatter, request-ID middleware (accepts a safe caller-supplied
+  `X-Request-ID` or generates one, echoes it, logs method/path/status/duration only), and the
+  health test adjusted to use a stub session until CI gets a Postgres service.
+- **Human decided:** no JSON-logging dependency (a 30-line stdlib formatter is enough); never log
+  bodies or query strings because they carry PII.
+- **Caught and corrected during manual testing:** with Postgres stopped, `/health` hung for ~130 s
+  before returning 503, because psycopg waits indefinitely to connect by default. Added
+  `connect_timeout=5` to the engine; it now fails in ~5 s. Also dropped uvicorn's ANSI-coloured
+  `color_message` field from JSON logs.
+- **Verified by:** running uvicorn against Docker Postgres: 200 with DB up, 503 with DB stopped,
+  200 again after restart; caller request id echoed, malformed request id replaced; ruff and pytest.

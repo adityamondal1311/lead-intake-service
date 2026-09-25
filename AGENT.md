@@ -426,3 +426,23 @@ against real PostgreSQL.
   in-flight check with `psql` holding an uncommitted insert of the same event for 3 s: the webhook
   waited ~2 s and returned `duplicate` when `psql` committed, and **processed normally** when
   `psql` rolled back, so a failed attempt never blocks Meta's retry; ruff and 116 tests.
+
+### Phase 6: Repeat webhook events and lead updates
+- **AI generated:** `lead_repository.get_by_external_id_for_update` and race-safe
+  `insert_if_new` (`INSERT … ON CONFLICT (external_id) DO NOTHING RETURNING`), `diff_lead_fields`,
+  and the service flow: lock lead → create (`LEAD_CREATED`) / update with field diff
+  (`LEAD_UPDATED`) / no-op (`UNCHANGED`) → mark the delivery.
+- **Human decided:** partial-update semantics, so a field missing from a later event never erases
+  stored data; the webhook can change name, email, phone, campaign/form/ad ids and
+  `meta_created_at` but never `status`; diff keys use the API's camelCase field names so the
+  timeline can show them directly; the delivery is recorded even when the outcome is `UNCHANGED`.
+- **Reviewed specifically:** when two deliveries race to create the same new lead, the loser's
+  `ON CONFLICT` waits for the winner's commit, gets no row, and re-reads the lead with
+  `FOR UPDATE`, continuing as an update instead of failing.
+- **Verified by:** by hand with the test sender: create → dashboard sets `CONTACTED` → changed
+  phone + campaign (`UPDATED`, diff of both, status still `CONTACTED`) → identical event
+  (`UNCHANGED`, no activity, delivery recorded) → event without email (email kept) → `psql`
+  holding `FOR UPDATE` on the lead for 3 s made the webhook update wait ~2 s; timeline in correct
+  order; no PII in logs; ruff and 116 tests. The manual run also showed the test sender stamping
+  each event with a new `created_time`, producing `metaCreatedAt` diffs; a service-side reading of
+  a real change, the script gets a `--created-time` option in the next commit.

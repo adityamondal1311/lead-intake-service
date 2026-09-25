@@ -248,8 +248,11 @@ are hidden from error messages for the same reason.
 *Duplicate deliveries:* the delivery is recorded with `INSERT … ON CONFLICT (source,
 external_event_id) DO NOTHING`; if no row is inserted the event was already received, nothing else
 is written, and the response is `200 {"status": "duplicate"}` (a 2xx, so Meta stops retrying).
-*Current stage:* a new event for an existing lead is still rejected by the `external_id` unique
-constraint (500, no duplicate data); `LEAD_UPDATED` handling comes next.
+*Repeat events for an existing lead:* the lead row is locked (`SELECT … FOR UPDATE`, the same
+lock the dashboard status update takes); fields that differ are updated and a `LEAD_UPDATED`
+activity records a field-level diff (outcome `UPDATED`); if nothing differs, nothing is written
+(outcome `UNCHANGED`, delivery still recorded). Missing fields never erase stored data, and the
+webhook never changes the lead's status.
 
 ### Sending a test webhook
 

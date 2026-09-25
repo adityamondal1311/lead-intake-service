@@ -1,3 +1,6 @@
-# Shell scripts run inside Linux containers: they must keep LF line endings even when checked
-# out on Windows (core.autocrlf would otherwise turn them into CRLF and break "/bin/sh").
+# Files used inside Linux containers keep LF line endings even when checked out on Windows
+# (core.autocrlf would otherwise convert them to CRLF): shell scripts break outright with CRLF,
+# and the rest should reach the image exactly as written.
 *.sh text eol=lf
+Dockerfile text eol=lf
+*.template text eol=lf

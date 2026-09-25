@@ -39,7 +39,7 @@ frontend/src/
   components/     layout, table, status badge, loading / empty / error states
   pages/          one component per route
   lib/            query client (retry policy), constants, Intl date formatting
-docker-compose.yml  local PostgreSQL
+docker-compose.yml  the whole stack: PostgreSQL, backend, frontend
 .github/          CI workflow
 AGENT.md          AI usage, architecture decisions, contribution log
 ```
@@ -345,6 +345,61 @@ uv run python scripts/send_test_webhook.py --url https://<host>/webhook/meta-lea
 ```
 
 The script signs the body itself (stdlib `hmac`), independently of the app code.
+
+## Quick start: the whole app in Docker
+
+Needs only [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+
+```bash
+docker compose up --build              # db → backend → frontend, each started once the previous is healthy
+docker compose exec backend python -m scripts.seed      # optional demo data
+```
+
+| | URL |
+|---|---|
+| Dashboard | http://localhost:3000 |
+| API + docs | http://localhost:8000/docs |
+| PostgreSQL | `localhost:5432` (user / password / db: `lead_intake`) |
+
+Send a signed test webhook with `python backend/scripts/send_test_webhook.py --secret change-me`
+(standard library only, no install needed). `docker compose down -v` stops everything and
+deletes the data. Local secrets default to `change-me`; override them in a root `.env`
+(gitignored).
+
+## Docker
+
+| Image | Build | Runtime |
+|---|---|---|
+| `backend` (~310 MB) | uv installs exactly `uv.lock`, no dev dependencies | `python:3.12-slim` with only the virtualenv and the code (no uv, tests or dev tools); non-root (uid 10001) |
+| `frontend` (~85 MB) | `npm ci` from the lockfile, `tsc -b && vite build` | `nginx-unprivileged` serving only the built files (no Node); non-root (uid 101) |
+
+- **Reproducible:** every base image (`python`, `uv`, `node`, `nginx-unprivileged`, `postgres`) is
+  pinned by version and `sha256` digest; dependencies come only from the lockfiles; dependency
+  layers are built before the code is copied, so code changes rebuild quickly.
+- **Backend start-up:** the entrypoint runs `alembic upgrade head` and **fails the container if a
+  migration fails** (the API never serves an unexpected schema), then `exec`s uvicorn so it is
+  PID 1 and shuts down gracefully on `docker stop`. It listens on `$PORT` (default 8000; Railway
+  sets it) and trusts the platform proxy's forwarded headers. Running migrations at start suits a
+  single instance; with several instances they belong in a separate release step.
+- **Healthchecks:** the backend's calls `/health`, which also checks PostgreSQL (standard-library
+  Python, no curl in the image); compose starts each service only once the one it depends on is
+  healthy.
+- **Frontend serving:** any non-file path returns `index.html`, so deep links and refreshes work;
+  hashed assets are cached for a year (`immutable`) while `index.html` is never cached, so a new
+  deploy is picked up on the next load; a missing asset is a 404; text assets are gzipped.
+- **Security headers** on every frontend response: `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy`, `X-Frame-Options: DENY` and a Content-Security-Policy allowing only the app's
+  own scripts/styles and API calls to its configured API origin.
+- **API origin is fixed at build time.** Vite compiles `VITE_API_BASE_URL` into the bundle (build
+  argument; compose uses `http://localhost:8000`). Pointing the frontend at another API means
+  rebuilding the image; runtime configuration was deliberately left out for a single
+  frontend/backend deployment.
+- **No secrets in images:** `.dockerignore` excludes `.env` files (and tests, caches, virtualenvs,
+  `node_modules`); checked by inspecting the built images.
+- **CI** (`docker` job) builds both images, starts the stack with `--wait`, and checks: backend
+  healthy with the database, migrations at head, the frontend and a deep link served with the
+  CSP, a signed webhook accepted, the seed running in the container, and neither container
+  running as root.
 
 ## Local development
 
@@ -668,9 +723,7 @@ protection they guard is removed.
       status updates with immediate cache update and background refresh
 - [x] Phase 10: frontend tests (80): Vitest + Testing Library + MSW with a stateful fake API;
       unit, lead list and lead detail / status flows; each protection confirmed to be caught
-- [ ] Phase 11: Docker
-  - [x] Backend image (multi-stage, uv lockfile, non-root, migrations at start, graceful shutdown)
-  - [x] Frontend image (nginx, non-root, SPA deep links, caching, gzip, security headers) and
-        full-stack compose
-  - [ ] CI: build images and smoke-test the stack
+- [x] Phase 11: Docker: pinned multi-stage backend and frontend images (non-root, migrations at
+      start, graceful shutdown, nginx SPA serving with security headers), one-command compose,
+      CI job that builds and smoke-tests the whole stack
 - [ ] Phase 12+: Railway deployment, final documentation

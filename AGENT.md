@@ -814,3 +814,18 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   `:3000` and the compiled API URL all line up) and a detail page loaded directly by URL; framing
   the app in an iframe renders blank (`frame-ancestors 'none'`, `X-Frame-Options: DENY`); no
   `.env`, Node or source maps in the image.
+
+### Phase 11: CI for the container stack
+- **AI generated:** the `docker` CI job (build both images, `docker compose up --wait`, then
+  checks), README "Quick start" and "Docker" sections; `.gitattributes` extended to Dockerfiles
+  and nginx templates; the backend test job's Postgres pinned to the same digest as compose.
+- **Human decided:** the smoke test must prove the stack *runs*, not only that images build; it
+  checks the schema promise (`alembic current` at head, plus a schema-dependent endpoint), not
+  just database connectivity; container behaviour beyond that is left to the backend and
+  frontend test jobs.
+- **Verified by:** every step of the job run locally, in order, from `docker compose down
+  --volumes`: stack healthy in 21 s (cached images); health with database ok; migrations at head;
+  `/`, a deep link and the CSP from the frontend; a signed webhook accepted (sent with the
+  stdlib-only test sender, as CI does with the runner's `python3`); seed inside the container and
+  26 leads served; backend uid 10001 and frontend uid 101. Then pushed and confirmed green in
+  GitHub Actions.

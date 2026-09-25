@@ -11,11 +11,11 @@ jobs:
     defaults:
       run:
         working-directory: backend
-    # Real Postgres (same major version as docker-compose): the tests exercise migrations and,
-    # from later phases, ON CONFLICT, FOR UPDATE, JSONB and CHECK constraints.
+    # Real Postgres, the same pinned image as docker-compose: the tests exercise migrations,
+    # ON CONFLICT, FOR UPDATE, JSONB and CHECK constraints.
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
         env:
           POSTGRES_USER: lead_intake
           POSTGRES_PASSWORD: lead_intake
@@ -53,3 +53,40 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+
+  # Builds both images and runs the whole stack exactly as `docker compose up --build` does from a
+  # clean clone, then checks that the containers start, talk to each other and serve their entry
+  # points. (Behaviour is covered by the backend and frontend test jobs.)
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images and start the stack (db → backend → frontend, health-gated)
+        run: docker compose up --build --detach --wait --wait-timeout 240
+      - name: Backend is healthy and connected to PostgreSQL
+        run: curl -fsS http://localhost:8000/health | grep -q '"database":"ok"'
+      - name: Migrations were applied (database at head; an endpoint that needs the schema works)
+        run: |
+          docker compose exec -T backend alembic current | grep -q '(head)'
+          curl -fsS "http://localhost:8000/leads?limit=1" | grep -q '"pagination"'
+      - name: Frontend serves the app, deep links included, with its security headers
+        run: |
+          curl -fsS http://localhost:3000/ | grep -q '<div id="root">'
+          curl -fsS http://localhost:3000/leads/00000000-0000-4000-8000-000000000000 | grep -q '<div id="root">'
+          curl -fsSI http://localhost:3000/ | grep -qi '^content-security-policy:.*connect-src .self. http://localhost:8000'
+      - name: A signed webhook is accepted by the containerised API
+        run: python3 backend/scripts/send_test_webhook.py --secret change-me
+      - name: The seed runs inside the backend container and its data is served
+        run: |
+          docker compose exec -T backend python -m scripts.seed
+          curl -fsS "http://localhost:8000/leads?limit=1" | grep -q '"total":26'
+      - name: Containers do not run as root
+        run: |
+          test "$(docker compose exec -T backend id -u)" != "0"
+          test "$(docker compose exec -T frontend id -u)" != "0"
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker compose logs
+      - name: Tear down
+        if: always()
+        run: docker compose down --volumes

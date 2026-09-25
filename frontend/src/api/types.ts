@@ -81,6 +81,12 @@ export interface LeadDetailResponse {
   activities: Activity[] // newest first, as returned by the API
 }
 
+/** PATCH /leads/{id}/status. `activity` is null when the lead already had that status. */
+export interface StatusUpdateResponse {
+  lead: LeadDetail
+  activity: Activity | null
+}
+
 export interface Pagination {
   page: number
   limit: number

@@ -670,3 +670,25 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   375 px, activity first); a name change. The fallback was checked by inserting a malformed
   `STATUS_CHANGED` row (empty details) into the **dev** database with `psql`, confirming
   "Activity recorded" rendered while the rest of the timeline stayed intact, then deleting it.
+
+### Phase 9: Status updates with live timeline refresh
+- **AI generated:** `updateLeadStatus`, `StatusUpdateResponse`, `useUpdateLeadStatus` (writes the
+  PATCH response into the lead cache, then invalidates the lead and every cached list page),
+  `StatusControl` (native labelled `<select>`, "Saving…", success/error live region with request
+  id), and the status card above the timeline.
+- **Human decided:** status changes are **server-authoritative rather than optimistic**, because
+  a status change is an audited domain operation; the PATCH response is used for immediate UI
+  consistency, followed by a background refetch to reconcile concurrent changes. A native
+  `<select>` fed from the shared status constants; disabled while a request is in flight (the
+  backend transaction, not a client lock, protects the data); mutations are not retried.
+- **Reviewed specifically:** without optimistic updates the select would snap back to the old
+  value while saving, looking like the choice was lost. It now shows the *requested* value,
+  disabled, beside "Saving…", while the badge and timeline stay on server data; on failure it
+  returns to the server value. The status control is keyed by lead so a previous lead's message
+  never carries over; the cache update skips an activity already present.
+- **Verified by:** lint and strict build; the browser's CORS preflight for `PATCH` from the dev
+  origin (allowed) and the PATCH itself sent as the select sends it, then screenshots: detail page
+  before (New, one activity) and after (Contacted badge and select, "Status changed from New to
+  Contacted · by Dashboard · just now" on top), and the list showing Contacted. The in-browser
+  interaction (Saving…, instant update, error revert) is on the manual checklist and is the first
+  target for the Phase 10 tests.

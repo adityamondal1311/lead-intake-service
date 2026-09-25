@@ -6,6 +6,7 @@ import LeadDetailSkeleton from '../components/LeadDetailSkeleton'
 import LeadDetailsCard from '../components/LeadDetailsCard'
 import RelativeTime from '../components/RelativeTime'
 import StatusBadge from '../components/StatusBadge'
+import StatusControl from '../components/StatusControl'
 import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { isLeadNotFound, useLead } from '../hooks/useLead'
 import { useNow } from '../hooks/useNow'
@@ -98,17 +99,26 @@ export default function LeadDetailPage() {
         <div className="lg:col-span-2">
           <LeadDetailsCard lead={lead} />
         </div>
-        <section
-          aria-labelledby="activity-heading"
-          className="order-first rounded-lg border border-zinc-200 bg-white p-5 lg:order-none lg:col-span-3"
-        >
-          <h2 id="activity-heading" className="text-sm font-semibold text-zinc-900">
-            Activity
-          </h2>
-          <div className="mt-4">
-            <ActivityTimeline activities={data.activities} now={now} />
-          </div>
-        </section>
+        <div className="order-first space-y-6 lg:order-none lg:col-span-3">
+          <section
+            aria-label="Change status"
+            className="rounded-lg border border-zinc-200 bg-white p-5"
+          >
+            {/* Keyed by lead: a previous lead's success/error message never carries over. */}
+            <StatusControl key={lead.id} leadId={lead.id} status={lead.status} />
+          </section>
+          <section
+            aria-labelledby="activity-heading"
+            className="rounded-lg border border-zinc-200 bg-white p-5"
+          >
+            <h2 id="activity-heading" className="text-sm font-semibold text-zinc-900">
+              Activity
+            </h2>
+            <div className="mt-4">
+              <ActivityTimeline activities={data.activities} now={now} />
+            </div>
+          </section>
+        </div>
       </div>
     </>
   )

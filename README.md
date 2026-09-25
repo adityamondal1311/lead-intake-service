@@ -456,6 +456,36 @@ narrowing it to a typed union (`LEAD_CREATED` → `{source}`, `LEAD_UPDATED` →
 `STATUS_CHANGED` → `{from, to}`). An entry that does not match its type renders as a generic
 "Activity recorded" line instead of breaking the page.
 
+**Changing status: server-authoritative, not optimistic.** A status change is an audited domain
+operation (the backend updates the lead and records `STATUS_CHANGED` in one locked transaction),
+so the UI never shows a change the server has not recorded:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant UI as Status select
+    participant Q as TanStack Query cache
+    participant API as PATCH /leads/{id}/status
+    U->>UI: picks "Contacted"
+    UI->>UI: disabled, shows "Contacted" + "Saving…"<br/>(badge and timeline still show server data)
+    UI->>API: {"status": "CONTACTED"}
+    API-->>UI: {lead, activity}  (one transaction, row-locked)
+    UI->>Q: write lead + prepend activity (instant, no extra request)
+    Q->>API: background refetch of the lead and every cached list page
+```
+
+- **Immediately after success** the response's lead and new activity go straight into the cache,
+  so the badge, select and timeline update without waiting for another request. A background
+  refetch then reconciles with anything else that changed (a webhook update, another user).
+- **While saving** the select shows the requested value, disabled, beside "Saving…": that is the
+  request, not a result. It cannot be submitted twice.
+- **On failure** the select returns to the server's value and the reason and request id are
+  shown. Status changes are not retried automatically.
+- **Two people changing the same lead:** the backend's row lock serializes them and records the
+  status each one actually replaced (e.g. New → Contacted, then Contacted → Qualified, even if the
+  second person's screen still said New); the refetch shows that true sequence.
+- The outcome ("Status updated to Contacted.") is announced through a live region.
+
 ### 4. Demo data (optional)
 
 ```bash
@@ -595,8 +625,7 @@ protection they guard is removed.
       complete** (see [Backend checkpoint](#backend-checkpoint))
 - [x] Phase 8: frontend lead list: app shell, typed API client, URL-driven search / status
       filter / pagination, loading / empty / error states, responsive table + cards
-- [ ] Phase 9: lead detail, status update and activity timeline
-  - [x] Lead detail page (contact, campaign, reference ids, back to the same list view, not-found)
-  - [x] Activity timeline (typed activities, readable diffs, actors, event ids, safe fallback)
-  - [ ] Status updates with live timeline refresh
+- [x] Phase 9: lead detail (contact, campaign, reference ids, back to the same list view,
+      not-found), activity timeline (typed, readable diffs, safe fallback), server-authoritative
+      status updates with immediate cache update and background refresh
 - [ ] Phase 10+: frontend tests, Docker, deployment

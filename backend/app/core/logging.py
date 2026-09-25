@@ -43,7 +43,7 @@ def configure_logging(level: str) -> None:
 
     root = logging.getLogger()
     root.handlers = [handler]
-    root.setLevel(level.upper())
+    root.setLevel(level)
 
     # Route uvicorn's own logs through the JSON handler. Its access log is turned off because the
     # request middleware writes a richer access line (request id, duration).

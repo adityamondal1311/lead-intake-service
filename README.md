@@ -381,15 +381,17 @@ npm run dev                               # http://localhost:5173
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ENVIRONMENT` | `local` | `local` / `production` |
-| `LOG_LEVEL` | `INFO` | Root log level |
-| `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON list of allowed browser origins |
+| `ENVIRONMENT` | `local` | Exactly `local`, `test` or `production`. Anything else (e.g. `prod`) stops startup, so a typo can never skip the production checks |
+| `LOG_LEVEL` | `INFO` | Exactly `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` |
+| `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON list of exact origins (`scheme://host[:port]`, no path or trailing slash); see [CORS](#cors) |
 | `DATABASE_URL` | local compose DB | `postgres://` and `postgresql://` are accepted and rewritten to the psycopg 3 driver (Railway supplies the former) |
 | `TEST_DATABASE_URL` | local `lead_intake_test` | Used only by pytest |
 | `META_APP_SECRET` | empty | Key for the webhook `X-Hub-Signature-256` HMAC. Empty → every delivery is rejected. **Required** (startup fails) when `ENVIRONMENT=production` |
 | `META_VERIFY_TOKEN` | empty | Token Meta sends in the subscription handshake. Empty → handshake always fails. **Required** when `ENVIRONMENT=production` |
 
-Only `.env.example` is committed; `.env` is gitignored.
+Every value is validated at startup: an invalid one stops the app with an error naming the
+variable, rather than letting it run misconfigured. Only `.env.example` is committed; `.env` is
+gitignored.
 
 ## Running tests and checks
 

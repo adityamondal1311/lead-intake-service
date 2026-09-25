@@ -475,3 +475,27 @@ against real PostgreSQL.
   retried successfully; different events → one lead with correct updates; identical data →
   `UNCHANGED`; changed field → `LEAD_UPDATED` diff; missing field preserved; status never changed
   by the webhook; dashboard + webhook both survive; timeline chronological; no PII in logs.
+
+### Phase 7: Hardening and verification — scope
+Already implemented in earlier phases (verified, not rebuilt): input validation with 422
+envelopes, the standard error envelope, request ids, JSON logging without PII, env-based
+configuration, DB-aware `/health`, OpenAPI at `/docs`. Phase 7 work: configuration validation
+hardening, automated PII-in-logs tests, CORS verification, a demo seed script through the real
+services, focused OpenAPI examples, and the final backend checkpoint.
+
+### Phase 7: Strict configuration values
+- **AI generated:** `Literal` types for `ENVIRONMENT` (`local`/`test`/`production`) and
+  `LOG_LEVEL`; a `CORS_ORIGINS` validator; configuration unit tests; annotated `.env.example`.
+- **Human decided:** exact values only (no case-folding), so `Production` fails like `prod`;
+  configuration errors stop startup rather than falling back to defaults.
+- **Caught and corrected:**
+  - `ENVIRONMENT` was free text and the production check compared it to `"production"`, so
+    `ENVIRONMENT=prod` started the app **with the secret check silently skipped** (confirmed by
+    probe before the fix).
+  - A CORS origin with a trailing slash (`https://app.example.com/`) was silently accepted, but
+    browsers send the Origin without it, so every dashboard request would have been blocked
+    with no server-side error. Origins are now validated as `scheme://host[:port]`.
+  - Non-JSON `CORS_ORIGINS` already failed at startup (pydantic-settings); now covered by tests.
+- **Verified by:** 29 new configuration tests; starting the app with `ENVIRONMENT=prod`,
+  `ENVIRONMENT=""`, `LOG_LEVEL=info` and a trailing-slash origin each fails with a message naming
+  the variable; `.env.example` loads through the app's dotenv parser; 160 tests pass.

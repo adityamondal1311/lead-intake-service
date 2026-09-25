@@ -24,6 +24,7 @@ backend/
     api/          routes and dependencies (per-request DB session)
     core/         settings, JSON logging, request-ID middleware
     db/           engine/session factory, declarative Base
+    models/       SQLAlchemy models: leads, activities, webhook_events
     schemas/      Pydantic response models
   alembic/        database migrations
   scripts/        init-test-db.sql (creates the test database in local Postgres)
@@ -122,4 +123,7 @@ table is truncated after each test. CI does the same with a Postgres 17 service 
 - [x] Phase 1: backend and frontend skeletons, CI
 - [x] Phase 2: PostgreSQL via Docker Compose, SQLAlchemy, Alembic, DB-aware health check, JSON
       logging, request IDs, tests against real Postgres in CI
-- [ ] Phase 3+: data model, lead APIs, webhook, frontend, tests, Docker, deployment
+- [ ] Phase 3: data model
+  - [x] `leads`, `activities`, `webhook_events` models and first migration (constraints, indexes)
+  - [ ] Constraint tests, data model documentation
+- [ ] Phase 4+: lead APIs, webhook, frontend, tests, Docker, deployment

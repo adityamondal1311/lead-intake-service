@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import Activity, Lead, WebhookEvent
+from app.models import Activity, Lead
 from app.models.enums import ActivityType, LeadSource, WebhookOutcome
 from app.repositories import activity_repository, lead_repository, webhook_event_repository
 from app.schemas.webhook import MetaLeadPayload
@@ -18,8 +18,16 @@ WEBHOOK_ACTOR = "system:meta_webhook"
 
 @dataclass(frozen=True)
 class WebhookResult:
-    outcome: WebhookOutcome
-    lead_id: uuid.UUID
+    # None means the delivery was a duplicate and nothing was processed.
+    outcome: WebhookOutcome | None
+    lead_id: uuid.UUID | None = None
+
+    @property
+    def is_duplicate(self) -> bool:
+        return self.outcome is None
+
+
+DUPLICATE = WebhookResult(outcome=None)
 
 
 def _lead_fields(payload: MetaLeadPayload) -> dict[str, Any]:
@@ -39,34 +47,36 @@ def _lead_fields(payload: MetaLeadPayload) -> dict[str, Any]:
 def process_meta_lead(
     session: Session, payload: MetaLeadPayload, raw_payload: dict[str, Any]
 ) -> WebhookResult:
-    """Store the delivery, create the lead and its LEAD_CREATED activity in one transaction.
+    """Process one webhook delivery in a single transaction.
 
-    Everything commits together or not at all. If any step fails, the webhook_events row is
-    rolled back too, so Meta's retry of the same event is processed from a clean slate.
+    1. Record the delivery with INSERT ... ON CONFLICT DO NOTHING. If the same event was already
+       recorded, it is a duplicate: nothing is written and DUPLICATE is returned.
+    2. Create the lead and its LEAD_CREATED activity, then mark the delivery processed.
 
-    Handles new leads only. A redelivered event or a new event for an existing lead is rejected
-    by the database's unique constraints (no duplicate data can be stored); turning those cases
-    into proper duplicate/update handling is the idempotency step that follows.
+    Everything commits together or not at all. If any step fails, the delivery row is rolled
+    back too, so Meta's retry of the same event is processed from a clean slate.
     """
     log_context = {"event_id": payload.event_id}  # identifiers only, never lead PII
     try:
         with session.begin():
-            event = webhook_event_repository.add(
+            event = webhook_event_repository.insert_if_new(
                 session,
-                WebhookEvent(
-                    source=LeadSource.META_ADS,
-                    external_event_id=payload.event_id,
-                    payload=raw_payload,
-                ),
+                source=LeadSource.META_ADS,
+                external_event_id=payload.event_id,
+                payload=raw_payload,
             )
+            if event is None:
+                logger.info("webhook duplicate ignored", extra=log_context)
+                return DUPLICATE
+
             lead = lead_repository.add(
                 session,
                 Lead(
                     external_id=payload.lead_id, source=LeadSource.META_ADS, **_lead_fields(payload)
                 ),
             )
-            # Flush sends the INSERTs so the database enforces its constraints now and the
-            # generated ids exist before the activity references them.
+            # Flush sends the INSERT so the database enforces its constraints now and the
+            # generated id exists before the activity references it.
             session.flush()
             activity_repository.add(
                 session,

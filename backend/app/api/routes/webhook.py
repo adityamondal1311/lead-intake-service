@@ -98,6 +98,8 @@ def _parse_payload(body: bytes) -> tuple[MetaLeadPayload, dict[str, Any]]:
 @router.post(
     "/meta-lead",
     summary="Receive a Meta lead",
+    # A duplicate is acknowledged with just {"status": "duplicate"} (no null fields).
+    response_model_exclude_none=True,
     description="Requires a valid `X-Hub-Signature-256` (HMAC-SHA256 of the raw body keyed with "
     "`META_APP_SECRET`). Stores the delivery, creates the lead and records a `LEAD_CREATED` "
     "activity in one transaction. The body is the normalized post-enrichment payload "
@@ -121,4 +123,7 @@ def receive_meta_lead(
 ) -> WebhookAck:
     payload, raw = _parse_payload(body)
     result = webhook_service.process_meta_lead(db, payload, raw)
+    if result.is_duplicate:
+        # 2xx so Meta stops retrying: from the sender's side the delivery did succeed earlier.
+        return WebhookAck(status="duplicate")
     return WebhookAck(status="processed", outcome=result.outcome, lead_id=result.lead_id)

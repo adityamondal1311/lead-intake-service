@@ -412,3 +412,17 @@ against real PostgreSQL.
   Phase 5 checkpoint (signed request → 200 CREATED → lead, `LEAD_CREATED` and delivery exist; bad
   signature → 401, nothing saved; activity failure → full rollback) demonstrated by hand and in
   tests; ruff clean; CI.
+
+### Phase 6: Idempotent webhook delivery
+- **AI generated:** `webhook_event_repository.insert_if_new` (`INSERT … ON CONFLICT (source,
+  external_event_id) DO NOTHING RETURNING`), duplicate short-circuit in the service, and the
+  `200 {"status": "duplicate"}` response.
+- **Human decided:** no application-level "check, then insert": that has a race window, so the
+  unique constraint is the concurrency boundary; the duplicate response is minimal
+  (`{"status": "duplicate"}` only; Meta just needs a 2xx, and extra fields would cost a lookup).
+- **Caught and corrected during review:** the first version of the response still serialized
+  `"outcome": null, "leadId": null` for duplicates; null fields are now excluded.
+- **Verified by:** same event sent twice → `processed` then `duplicate`, one row each; an
+  in-flight check with `psql` holding an uncommitted insert of the same event for 3 s: the webhook
+  waited ~2 s and returned `duplicate` when `psql` committed, and **processed normally** when
+  `psql` rolled back, so a failed attempt never blocks Meta's retry; ruff and 116 tests.

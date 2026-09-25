@@ -245,9 +245,11 @@ everything rolls back, **including the delivery row**, so Meta's retry of the sa
 processed from a clean slate. Logs carry the event id and outcome, never lead data; SQL parameters
 are hidden from error messages for the same reason.
 
-*Current stage:* new leads only. A redelivered event or a new event for an existing lead is
-rejected by the unique constraints (no duplicate data can be stored) and currently returns 500;
-idempotent duplicate handling and `LEAD_UPDATED` come next.
+*Duplicate deliveries:* the delivery is recorded with `INSERT … ON CONFLICT (source,
+external_event_id) DO NOTHING`; if no row is inserted the event was already received, nothing else
+is written, and the response is `200 {"status": "duplicate"}` (a 2xx, so Meta stops retrying).
+*Current stage:* a new event for an existing lead is still rejected by the `external_id` unique
+constraint (500, no duplicate data); `LEAD_UPDATED` handling comes next.
 
 ### Sending a test webhook
 

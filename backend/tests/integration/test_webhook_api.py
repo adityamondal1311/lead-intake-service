@@ -123,13 +123,15 @@ def test_ingested_lead_is_served_by_the_lead_api_without_the_raw_payload(
     assert "  Rahul Sharma " not in json.dumps(detail)  # only the normalized value is exposed
 
 
-def test_redelivery_never_creates_a_second_lead_or_activity(
+def test_redelivery_is_acknowledged_as_duplicate_without_new_data(
     client: TestClient, db_session: Session
 ) -> None:
-    _post_payload(client, _payload())
-    _post_payload(client, _payload())  # same event_id again
+    first = _post_payload(client, _payload())
+    second = _post_payload(client, _payload())  # Meta retrying the same event_id
 
-    # Guaranteed by the database constraints even before explicit idempotency handling.
+    assert first.json()["status"] == "processed"
+    assert second.status_code == 200
+    assert second.json() == {"status": "duplicate"}
     assert _counts(db_session) == (1, 1, 1)
 
 

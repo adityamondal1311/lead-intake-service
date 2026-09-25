@@ -120,7 +120,8 @@ Interactive docs: `http://localhost:8000/docs` (OpenAPI at `/openapi.json`). JSO
 | `GET` | `/leads` | Paginated, filterable, searchable lead list |
 | `GET` | `/leads/{id}` | One lead with its activity timeline |
 | `PATCH` | `/leads/{id}/status` | Change status; records a `STATUS_CHANGED` activity |
-| `POST` | `/webhook/meta-lead` | Meta lead ingestion *(webhook phase)* |
+| `GET` | `/webhook/meta-lead` | Meta subscription handshake |
+| `POST` | `/webhook/meta-lead` | Signed Meta lead ingestion (see [Webhook](#webhook-post-webhookmeta-lead)) |
 
 ### `GET /leads`
 
@@ -193,6 +194,72 @@ Every non-2xx response has the same envelope:
 | 500 | `INTERNAL_ERROR` | Unexpected failure; traceback is logged under the `requestId`, never returned |
 
 `requestId` matches the `X-Request-ID` response header and the server log lines for that request.
+
+## Webhook: `POST /webhook/meta-lead`
+
+### Payload
+
+A normalized, flat payload (snake_case, as Meta sends field names):
+
+```json
+{
+  "event_id": "evt_123",
+  "lead_id": "meta_lead_123",
+  "created_time": "2026-09-24T10:00:00+0000",
+  "campaign_id": "cmp_1", "form_id": "form_1", "ad_id": "ad_1",
+  "full_name": "Rahul Sharma",
+  "email": "rahul@example.com",
+  "phone": "+919999999999"
+}
+```
+
+Required: `event_id`, `lead_id`, `full_name`, and at least one of `email` / `phone`. Values are
+trimmed, the email is lowercased and format-checked, blank optional fields become null,
+`created_time` must include a timezone, and unknown fields are ignored.
+
+> **Honest scope note.** A real Meta Lead Ads webhook carries only a `leadgen_id` plus page/form/ad
+> ids; the name, email and phone are then fetched from the Graph API with a page access token.
+> This service accepts the lead *after* that enrichment step. The Graph API fetch is out of scope.
+
+### Authenticity
+
+Meta signs each delivery with HMAC-SHA256 over the **raw body bytes**, keyed with the app secret,
+in `X-Hub-Signature-256: sha256=<hex>`. The service reads the raw body (capped at 64 KiB),
+recomputes the HMAC and compares in constant time **before parsing anything**, so an
+unauthenticated caller gets `401 INVALID_SIGNATURE` and nothing else. An empty
+`META_APP_SECRET` rejects every delivery; production refuses to start without it.
+
+`GET /webhook/meta-lead` answers Meta's subscription handshake: with `hub.mode=subscribe` and a
+`hub.verify_token` equal to `META_VERIFY_TOKEN`, it echoes `hub.challenge` as plain text; otherwise
+403.
+
+### Processing (one transaction)
+
+1. Insert the delivery into `webhook_events` with the raw payload.
+2. Insert the lead (status `NEW`).
+3. Insert a `LEAD_CREATED` activity (`actor: system:meta_webhook`, details reference the delivery).
+4. Mark the delivery `outcome: CREATED`, `processed_at`, linked lead → `COMMIT`.
+
+Response: `200 {"status": "processed", "outcome": "CREATED", "leadId": "…"}`. If any step fails,
+everything rolls back, **including the delivery row**, so Meta's retry of the same event is
+processed from a clean slate. Logs carry the event id and outcome, never lead data; SQL parameters
+are hidden from error messages for the same reason.
+
+*Current stage:* new leads only. A redelivered event or a new event for an existing lead is
+rejected by the unique constraints (no duplicate data can be stored) and currently returns 500;
+idempotent duplicate handling and `LEAD_UPDATED` come next.
+
+### Sending a test webhook
+
+```bash
+cd backend
+export META_APP_SECRET=change-me        # must match the server's META_APP_SECRET
+uv run python scripts/send_test_webhook.py                          # new random lead
+uv run python scripts/send_test_webhook.py --bad-signature          # expect 401
+uv run python scripts/send_test_webhook.py --url https://<host>/webhook/meta-lead
+```
+
+The script signs the body itself (stdlib `hmac`), independently of the app code.
 
 ## Local development
 
@@ -296,9 +363,6 @@ tests were confirmed to fail when the row lock or the timestamp fix is removed.
       indexes), database-level constraint tests
 - [x] Phase 4: lead APIs: list (pagination, filter, search), detail with timeline, transactional
       row-locked status updates, JSON error envelope, API integration tests
-- [ ] Phase 5: Meta webhook
-  - [x] Signature verification (HMAC-SHA256), subscription handshake, production secret check
-  - [x] Payload validation and transactional lead ingestion (new leads; redelivery and
-        existing-lead events are rejected by DB constraints until Phase 6 adds idempotency)
-  - [ ] Tests, test sender script, webhook documentation
+- [x] Phase 5: Meta webhook: HMAC signature verification, subscription handshake, payload
+      validation, transactional lead ingestion with LEAD_CREATED audit, test sender, tests
 - [ ] Phase 6+: webhook idempotency, frontend, Docker, deployment

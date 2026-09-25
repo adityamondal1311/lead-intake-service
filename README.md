@@ -34,9 +34,11 @@ backend/
 frontend/src/
   main.tsx        QueryClientProvider + RouterProvider
   router.tsx      routes (react-router v8, data mode)
-  components/     app layout and shared UI
+  api/            typed fetch client (ApiError), backend types, endpoint functions
+  hooks/          TanStack Query hooks (useLeads), useNow for live relative times
+  components/     layout, table, status badge, loading / empty / error states
   pages/          one component per route
-  lib/            query client, helpers
+  lib/            query client (retry policy), constants, Intl date formatting
 docker-compose.yml  local PostgreSQL
 .github/          CI workflow
 AGENT.md          AI usage, architecture decisions, contribution log
@@ -384,6 +386,19 @@ npm install
 npm run dev                               # http://localhost:5173
 ```
 
+`VITE_API_BASE_URL` (see `frontend/.env.example`, default `http://localhost:8000`) is the backend
+origin. Vite inlines it at **build** time, so a deployed build must have it set before
+`npm run build`.
+
+**How the frontend talks to the API.** Components never call `fetch`: a page uses a hook
+(`useLeads`), the hook uses TanStack Query, which calls `api/leads.ts`, which uses the typed
+`api/client.ts`. The client turns every failure into one `ApiError` (`status`, `code`, `message`,
+`details`, `requestId`), with `NETWORK_ERROR` when the server is unreachable, so the UI can say
+*why* something failed and show the request id that finds it in the server logs. Queries retry
+only network errors and 5xx (at most twice); a 4xx fails the same way every time, so it is shown
+immediately. Each query passes TanStack's `AbortSignal` to `fetch`, so a superseded request is
+cancelled and can never overwrite newer data.
+
 ### 4. Demo data (optional)
 
 ```bash
@@ -523,6 +538,7 @@ protection they guard is removed.
       complete** (see [Backend checkpoint](#backend-checkpoint))
 - [ ] Phase 8: frontend lead list
   - [x] App shell: Tailwind v4, react-router v8, TanStack Query v5, layout, 404 and error pages
-  - [ ] Typed API client and lead list page
+  - [x] Typed API client (ApiError, retry policy, cancellation) and lead list with loading,
+        empty and error states
   - [ ] Search, status filter, pagination, responsive layout
 - [ ] Phase 9+: lead detail and timeline, frontend tests, Docker, deployment

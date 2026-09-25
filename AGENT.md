@@ -580,3 +580,27 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   mobile shots now render the page inside a 375 px iframe, a true phone viewport.
 - **Verified by:** `npm run lint`, `npm run build` (strict `tsc -b`); screenshots of `/` at desktop
   width and of an unknown route at 375 px (404 page, no overflow).
+
+### Phase 8: Typed API client and lead list page
+- **AI generated:** `api/client.ts` (`ApiError` from the error envelope, `NETWORK_ERROR` for an
+  unreachable server, fallback for non-envelope errors), `api/types.ts` mirroring the backend
+  schemas, `api/leads.ts`, `useLeads` (TanStack Query v5 `placeholderData: keepPreviousData`,
+  `AbortSignal` passed to `fetch`), the retry policy, `useNow`, Intl date formatting, and the
+  table, status badge, skeleton, empty and error components.
+- **Human decided:** retry only network errors and 5xx (a 4xx fails identically every time);
+  pass the query's `AbortSignal` so a superseded search can never overwrite newer data; relative
+  times refresh every minute (one timer per page, not per row); status colour is always paired
+  with its text label; the row is clickable through a real link (not a `div` with `onClick`).
+- **Caught and corrected:**
+  - The Vite template's `erasableSyntaxOnly` forbids TypeScript parameter properties, so
+    `ApiError` declares its fields explicitly.
+  - The 375 px screenshot showed the table's container clipping the Status, Campaign and Created
+    columns (`overflow-hidden`). Until the mobile card layout arrives, the table scrolls sideways
+    instead, so no data is hidden.
+  - Screenshot tooling: the phone-width wrapper page must be same-site with the app
+    (`localhost`, not `127.0.0.1`), or headless Chromium renders the iframe in another process and
+    captures it before the data arrives (the API log showed the requests succeeding).
+- **Verified by:** lint and strict build; screenshots against the real API with the seeded data:
+  desktop list (columns aligned, badges readable, `—` for a missing email), 375 px (skeleton, then
+  the loaded list), database stopped → "Something went wrong" with a request id that matches the
+  server's `unhandled error` log line, empty database → "No leads yet" with how to create some.

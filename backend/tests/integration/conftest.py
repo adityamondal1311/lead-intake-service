@@ -8,10 +8,11 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import models  # noqa: F401  (registers every table, so clean_tables truncates all of them)
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.db.base import Base
 from app.db.session import SessionLocal, engine
 from app.main import app
+from tests.integration.webhook_support import SECRET, VERIFY_TOKEN
 
 
 def _alembic_config() -> Config:
@@ -46,6 +47,17 @@ def alembic_config() -> Config:
 def db_session() -> Iterator[Session]:
     with SessionLocal() as session:
         yield session
+
+
+@pytest.fixture
+def webhook_settings() -> Iterator[None]:
+    """Fixed webhook secrets, so a developer's backend/.env can never change what tests see."""
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        meta_app_secret=SECRET, meta_verify_token=VERIFY_TOKEN
+    )
+    yield
+    app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest.fixture

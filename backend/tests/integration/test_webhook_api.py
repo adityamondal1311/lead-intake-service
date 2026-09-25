@@ -1,11 +1,9 @@
 import json
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import Response
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -14,59 +12,13 @@ from app.main import app
 from app.models import Activity, Lead, WebhookEvent
 from app.models.enums import ActivityType, LeadStatus, WebhookOutcome
 from app.services import webhook_service
+from tests.integration.webhook_support import SECRET, URL, VERIFY_TOKEN
+from tests.integration.webhook_support import counts as _counts
+from tests.integration.webhook_support import payload as _payload
+from tests.integration.webhook_support import post as _post
+from tests.integration.webhook_support import post_payload as _post_payload
 
-SECRET = "test-app-secret"
-VERIFY_TOKEN = "test-verify-token"
-URL = "/webhook/meta-lead"
-
-
-@pytest.fixture(autouse=True)
-def webhook_settings() -> Iterator[None]:
-    # Explicit values, so a developer's backend/.env can never change what these tests see.
-    app.dependency_overrides[get_settings] = lambda: Settings(
-        meta_app_secret=SECRET, meta_verify_token=VERIFY_TOKEN
-    )
-    yield
-    app.dependency_overrides.pop(get_settings, None)
-
-
-def _payload(**overrides: Any) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "event_id": "evt_1",
-        "lead_id": "meta_lead_1",
-        "created_time": "2026-09-24T10:00:00+0000",
-        "campaign_id": "cmp_1",
-        "form_id": "form_1",
-        "ad_id": "ad_1",
-        "full_name": "  Rahul Sharma ",
-        "email": "Rahul.Sharma@Example.com",
-        "phone": "+919999999999",
-    }
-    payload.update(overrides)
-    return payload
-
-
-def _post(
-    client: TestClient, body: bytes, signature: str | None = "sign", secret: str = SECRET
-) -> Response:
-    headers = {"Content-Type": "application/json"}
-    if signature == "sign":
-        headers["X-Hub-Signature-256"] = compute_signature(secret, body)
-    elif signature is not None:
-        headers["X-Hub-Signature-256"] = signature
-    return client.post(URL, content=body, headers=headers)
-
-
-def _post_payload(client: TestClient, payload: dict[str, Any]) -> Response:
-    return _post(client, json.dumps(payload).encode())
-
-
-def _counts(session: Session) -> tuple[int, int, int]:
-    session.expire_all()
-    return tuple(  # type: ignore[return-value]
-        session.scalar(select(func.count()).select_from(model)) or 0
-        for model in (Lead, Activity, WebhookEvent)
-    )
+pytestmark = pytest.mark.usefixtures("webhook_settings")
 
 
 # --- successful ingestion --------------------------------------------------------------------

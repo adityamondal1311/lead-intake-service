@@ -254,6 +254,73 @@ activity records a field-level diff (outcome `UPDATED`); if nothing differs, not
 (outcome `UNCHANGED`, delivery still recorded). Missing fields never erase stored data, and the
 webhook never changes the lead's status.
 
+### Idempotency and concurrency
+
+Two separate keys, for two separate problems:
+
+| Key | Constraint | Protects against |
+|---|---|---|
+| Meta `event_id` | `UNIQUE (source, external_event_id)` on `webhook_events` | The **same delivery** processed twice (retries) |
+| Meta `lead_id` | `UNIQUE (external_id)` on `leads` | The **same lead** stored twice (different events about one lead) |
+
+```mermaid
+flowchart TD
+    A[Signed delivery] --> B["INSERT webhook_event<br/>ON CONFLICT DO NOTHING"]
+    B -->|no row| DUP["200 duplicate<br/>(nothing written)"]
+    B -->|row| C["SELECT lead WHERE external_id = ?<br/>FOR UPDATE"]
+    C -->|not found| D["INSERT lead<br/>ON CONFLICT DO NOTHING"]
+    D -->|row| CR["LEAD_CREATED<br/>outcome CREATED"]
+    D -->|"no row (lost a race)"| C2["re-SELECT … FOR UPDATE"] --> E
+    C -->|found| E{"any incoming field<br/>differs?"}
+    E -->|yes| UP["update fields + LEAD_UPDATED diff<br/>outcome UPDATED"]
+    E -->|no| UN["no write, no activity<br/>outcome UNCHANGED"]
+    CR --> F["mark delivery processed → COMMIT"]
+    UP --> F
+    UN --> F
+```
+
+**Why not "check whether the event exists, then insert"?** Two simultaneous deliveries can both
+run the check, both see nothing, and both insert. There is no application-level fix for that
+window, so the database's unique constraint is the concurrency boundary: `INSERT … ON CONFLICT
+DO NOTHING` either inserts or reports a conflict atomically.
+
+**What happens when two identical deliveries arrive at the same instant:** the second `INSERT`
+waits on the unique index until the first transaction ends. If the first commits, the second sees
+the conflict and answers `duplicate`; if the first rolls back (it failed), the second inserts and
+processes normally, so a failed attempt never blocks the retry. Both behaviours were checked by
+holding an uncommitted insert open in `psql`.
+
+**Different events for the same new lead at the same instant:** delivery idempotency does not
+apply (the event ids differ). Both may find no lead; only one lead `INSERT` succeeds, the other
+waits for its commit, gets no row back, re-reads the lead with `FOR UPDATE` and continues as an
+update. Result: one lead, one `LEAD_CREATED`, the rest `LEAD_UPDATED` / `UNCHANGED`.
+
+**Webhook and dashboard on the same lead:** both take the same row lock (`FOR UPDATE`), so they
+run one after the other, and each audit entry's "from" value is what it actually replaced. The
+webhook never writes `status`, so a salesperson's status change is never undone by a later Meta
+event.
+
+**Update semantics** (repeat events for an existing lead):
+
+- Fields that differ are applied and recorded as
+  `{"changes": {"phone": {"from": "+911…", "to": "+912…"}}, "externalEventId": …, "webhookEventId": …}`
+  (field names as in the API).
+- A field that is **absent or blank** in a later event never erases the stored value: events are
+  treated as partial updates, not full snapshots.
+- Identical data → outcome `UNCHANGED`, no activity, but the delivery is still recorded.
+
+**Known limitation: out-of-order events.** The payload carries no event timestamp or version
+(`created_time` is when the *lead* was submitted), so for conflicting updates the **last delivered
+event wins**. If Meta delivered event B before an older event A, A's values would be applied last.
+Fixing that needs a source-provided event version or timestamp to compare against; it is
+documented rather than guessed at.
+
+**How this is tested:** real threads against real PostgreSQL, each scenario repeated: the same
+event 5× at once (1 processed, 4 duplicates, no 500s); four different events for one new lead at
+once (one lead, one `LEAD_CREATED`, an unbroken `from → to` chain); a dashboard status change
+racing a webhook update (both survive). Removing `ON CONFLICT` from either insert, or `FOR UPDATE`
+from the webhook's lead lookup, makes these tests fail in every round.
+
 ### Sending a test webhook
 
 ```bash
@@ -261,6 +328,10 @@ cd backend
 export META_APP_SECRET=change-me        # must match the server's META_APP_SECRET
 uv run python scripts/send_test_webhook.py                          # new random lead
 uv run python scripts/send_test_webhook.py --bad-signature          # expect 401
+uv run python scripts/send_test_webhook.py --event-id evt_1 --event-id evt_1   # processed, then duplicate
+# Same lead, fixed created time, new phone on the second run -> LEAD_UPDATED with a phone diff
+uv run python scripts/send_test_webhook.py --lead-id L1 --email r@example.com --created-time 2026-09-24T10:00:00Z --phone +911
+uv run python scripts/send_test_webhook.py --lead-id L1 --email r@example.com --created-time 2026-09-24T10:00:00Z --phone +912
 uv run python scripts/send_test_webhook.py --url https://<host>/webhook/meta-lead
 ```
 
@@ -370,4 +441,6 @@ tests were confirmed to fail when the row lock or the timestamp fix is removed.
       row-locked status updates, JSON error envelope, API integration tests
 - [x] Phase 5: Meta webhook: HMAC signature verification, subscription handshake, payload
       validation, transactional lead ingestion with LEAD_CREATED audit, test sender, tests
-- [ ] Phase 6+: webhook idempotency, frontend, Docker, deployment
+- [x] Phase 6: webhook idempotency (ON CONFLICT), repeat events with LEAD_UPDATED diffs and
+      UNCHANGED, race-safe lead creation, concurrency tests
+- [ ] Phase 7+: backend hardening review, frontend, Docker, deployment

@@ -37,6 +37,8 @@ Updated per phase; the detail is in the [AI Contribution Log](#ai-contribution-l
   timeline-order fix migration, API integration tests.
 - Phase 5: webhook signature verification and handshake, payload schema, ingestion service,
   test sender script, webhook tests.
+- Phase 6: `ON CONFLICT` delivery and lead inserts, lead locking, diff and update flow, reliability
+  and concurrency tests, README idempotency section.
 
 ## Human-Written / Human-Decided Sections
 
@@ -185,6 +187,9 @@ against real PostgreSQL.
   (persist → ack → worker) is the scaling path.
 - **Search uses `ILIKE`** without an index; a `pg_trgm` GIN index is the scaling path.
 - **No strict status state machine.** Any status may move to any other (D4).
+- **Out-of-order webhook events: last delivered wins.** The payload has no event timestamp or
+  version (`created_time` is the lead's submission time), so an older event delivered after a
+  newer one overwrites it. Needs a source-provided event version to fix; not guessed at.
 - **Migrations will run at container start** (Docker phase), fine for a single instance; at scale
   they belong in a separate release step.
 
@@ -444,5 +449,29 @@ against real PostgreSQL.
   (`UNCHANGED`, no activity, delivery recorded) → event without email (email kept) → `psql`
   holding `FOR UPDATE` on the lead for 3 s made the webhook update wait ~2 s; timeline in correct
   order; no PII in logs; ruff and 116 tests. The manual run also showed the test sender stamping
-  each event with a new `created_time`, producing `metaCreatedAt` diffs; a service-side reading of
-  a real change, the script gets a `--created-time` option in the next commit.
+  each event with a new `created_time`, producing `metaCreatedAt` diffs. The service was right to
+  record them (the value really changed); the script gets a `--created-time` option next commit.
+
+### Phase 6: Webhook concurrency and idempotency tests
+- **AI generated:** `tests/integration/test_webhook_reliability.py` (same event 5× at once; changed
+  fields → `LEAD_UPDATED` diff with status preserved; identical event → `UNCHANGED`, no activity,
+  delivery recorded; missing fields preserved; timeline order; four different events for one new
+  lead at once; dashboard status change racing a webhook update), `tests/unit/test_lead_diff.py`,
+  shared `webhook_support.py` helpers, the `--created-time` option for the test sender, and the
+  README "Idempotency and concurrency" section with a flow diagram.
+- **Human decided:** concurrent scenarios go through real HTTP requests from threads (not direct
+  service calls) and repeat 3 rounds each; the out-of-order limitation is documented, not solved.
+- **Verified the tests can fail:** removing `ON CONFLICT` from the delivery insert failed the
+  duplicate test in 3/3 rounds; removing it from the lead insert failed the new-lead race test in
+  3/3; removing `FOR UPDATE` from the webhook's lead lookup failed the same race test (broken
+  `from → to` chain) in 3/3. The dashboard-vs-webhook test does *not* fail without the lock,
+  because SQLAlchemy's UPDATE writes only changed columns; it proves both changes survive, while
+  the lock's contribution (correct diffs) is what the race test covers.
+- **Also caught:** the README's first update example would have produced an email diff too (the
+  sender randomizes the email per run); the example now pins it, and every README webhook command
+  was run verbatim against a live server.
+- **Verified by:** 135 tests passing against Docker Postgres; ruff clean; CI. Phase 6 checkpoint:
+  same event twice → 1 processed + 1 duplicate; 5× concurrent → 1 + 4, no 500s; failed delivery
+  retried successfully; different events → one lead with correct updates; identical data →
+  `UNCHANGED`; changed field → `LEAD_UPDATED` diff; missing field preserved; status never changed
+  by the webhook; dashboard + webhook both survive; timeline chronological; no PII in logs.

@@ -6,7 +6,8 @@ X-Hub-Signature-256: sha256=<hex>.
 
 Examples (from backend/):
     uv run python scripts/send_test_webhook.py --secret my-app-secret
-    uv run python scripts/send_test_webhook.py --lead-id meta_lead_42 --phone "+919812345678"
+    uv run python scripts/send_test_webhook.py --lead-id meta_lead_42 --phone "+919812345678" \
+        --created-time 2026-09-24T10:00:00+00:00  # rerun with another phone -> LEAD_UPDATED
     uv run python scripts/send_test_webhook.py --event-id evt_1 --event-id evt_1  # sent twice
     uv run python scripts/send_test_webhook.py --bad-signature                     # expect 401
     uv run python scripts/send_test_webhook.py --url https://<backend>/webhook/meta-lead
@@ -32,7 +33,7 @@ def build_payload(args: argparse.Namespace, event_id: str) -> dict[str, object]:
     payload: dict[str, object] = {
         "event_id": event_id,
         "lead_id": args.lead_id,
-        "created_time": datetime.now(UTC).isoformat(timespec="seconds"),
+        "created_time": args.created_time,
         "campaign_id": args.campaign_id,
         "form_id": "form_demo",
         "ad_id": "ad_demo",
@@ -82,6 +83,12 @@ def main() -> int:
     parser.add_argument("--email", default=f"rahul.{suffix}@example.com")
     parser.add_argument("--phone", default="+919999999999")
     parser.add_argument("--campaign-id", default="cmp_demo")
+    parser.add_argument(
+        "--created-time",
+        default=datetime.now(UTC).isoformat(timespec="seconds"),
+        help="When the lead was submitted on Meta (ISO 8601 with timezone). Keep it fixed when "
+        "sending several events for one lead, or every event also changes metaCreatedAt.",
+    )
     parser.add_argument("--bad-signature", action="store_true", help="Send a wrong signature")
     args = parser.parse_args()
 

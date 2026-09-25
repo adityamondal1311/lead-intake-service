@@ -41,6 +41,9 @@ Updated per phase; the detail is in the [AI Contribution Log](#ai-contribution-l
   and concurrency tests, README idempotency section.
 - Phase 7: strict configuration types and CORS origin validation, PII-in-logs and CORS tests,
   seed script, OpenAPI examples, root redirect.
+- Phase 8: app shell, typed API client, lead list with URL-driven filters and pagination.
+- Phase 9: lead detail page, activity timeline, server-authoritative status updates.
+- Phase 10: Vitest/Testing Library/MSW harness, stateful fake API, 80 frontend tests.
 
 ## Human-Written / Human-Decided Sections
 
@@ -163,6 +166,13 @@ Condensed, in order.
    protection is removed."* → Phase 6.
 10. *"Phase 7: hardening, not features — strict config, automated no-PII-in-logs and CORS tests,
     a seed script through the real services, focused OpenAPI examples."* → Phase 7.
+11. *"Phase 8: lead list — typed API client, TanStack Query, URL-driven search/filter/pagination
+    (typing replaces history, pagination pushes), explicit retry policy, AbortSignal, cards on
+    phones; tests in Phase 10."* → Phase 8.
+12. *"Phase 9: detail, timeline and status. Server-authoritative (not optimistic) status changes,
+    malformed id = not found, show reference ids, manual checklist for the interaction."* → Phase 9.
+13. *"Phase 10: Vitest + Testing Library + MSW with a stateful fake API, real timers, no
+    Playwright, prove the key tests fail when protections are removed."* → Phase 10.
 
 ## AI Output Review Standard
 
@@ -202,6 +212,9 @@ against real PostgreSQL.
 - **Out-of-order webhook events: last delivered wins.** The payload has no event timestamp or
   version (`created_time` is the lead's submission time), so an older event delivered after a
   newer one overwrites it. Needs a source-provided event version to fix; not guessed at.
+- **No browser end-to-end tests.** Frontend flows are tested in jsdom against a stateful MSW fake
+  of the API; the backend is tested against real PostgreSQL. A Playwright suite against the
+  deployed stack is the next step.
 - **Migrations will run at container start** (Docker phase), fine for a single instance; at scale
   they belong in a separate release step.
 
@@ -730,3 +743,26 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   retried → the retry unit tests and the error flow test fail. Restored; all pass.
 - **Verified by:** 56 frontend tests, three consecutive full runs green (~7 s each, no flakiness
   from real timers); lint and strict build.
+
+### Phase 10: Lead detail and status update tests
+- **AI generated:** `parseActivity` / label unit tests; `LeadDetailPage.test.tsx`: details and
+  timeline sentences, malformed-activity fallback, not-found (404 and 422) with one request each,
+  the saving state, the PATCH response applied before the background refetch, failure, no-op
+  after another user's change, background reconciliation with a webhook update made meanwhile,
+  and the list refreshed on return.
+- **Human decided:** the most valuable tests are the ones that pin the Phase 9 design: the badge
+  and timeline must still show the *old* status while saving (server-authoritative), and a
+  failed PATCH must be sent once and leave the saved value in place.
+- **Caught during review of the tests themselves:**
+  - The success test alone would still pass if the page only updated after the background
+    refetch, so "applied from the PATCH response" was not actually proven. Added a test that
+    holds every later GET of the lead and checks the new status and activity are already shown.
+    Removing the cache write fails that test and only that test.
+  - Dropped a "fake API sanity" test that asserted almost nothing (one check was that an import
+    existed).
+- **Verified the tests can fail:** retrying 4xx → both not-found tests fail (more than one
+  request); an optimistic `onMutate` → the "old status while saving" test fails; select not
+  disabled while saving → the saving test fails; PATCH response not written to the cache → the
+  "before the refetch" test fails. Restored; all pass.
+- **Verified by:** 80 frontend tests, three consecutive full runs green (~8 s); lint and strict
+  build.

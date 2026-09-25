@@ -598,8 +598,23 @@ request the fake does not handle fails the test, and every test gets a fresh que
   to the previous page while typing adds no history; previous rows staying visible ("Updating…")
   while the next page loads; hand-edited URLs cleaned up; a page past the end corrected; Back to
   leads returning to the same filtered view.
+- **Lead detail and status flows:** details, contact links and a readable timeline newest first;
+  an unexpected activity rendered as a generic entry without breaking the rest; "Lead not found"
+  for an unknown and a malformed id with **exactly one request** each; while saving, the select
+  shows the requested value, disabled, beside "Saving…" **while the badge and timeline still show
+  the old status**; the PATCH response applied **before** the background refetch returns (the
+  refetch is held back in the test); a failed PATCH returning the select to the saved value with
+  the request id, sent once; a no-op when another user already set that status (no activity
+  invented); a webhook update made meanwhile appearing after the background refresh; and the list
+  showing the new status on return.
 - **Confirmed to fail when the protection is removed:** a 0 ms debounce fails the one-request and
-  history tests; never retrying 5xx fails the retry unit tests and the error flow test.
+  history tests; never retrying 5xx fails the retry tests; retrying 4xx fails both not-found tests;
+  an optimistic update fails the "old status while saving" test; an enabled select while saving
+  fails the saving test; not applying the PATCH response fails the "before the refetch" test.
+- **Deliberately not done:** browser end-to-end tests (e.g. Playwright against the real backend)
+  are deferred as a future improvement: the frontend is tested through rendered user interactions
+  against a faithful fake API, and the backend separately against real PostgreSQL. No coverage
+  percentage and no snapshot tests.
 
 ## Observability
 
@@ -651,8 +666,6 @@ protection they guard is removed.
 - [x] Phase 9: lead detail (contact, campaign, reference ids, back to the same list view,
       not-found), activity timeline (typed, readable diffs, safe fallback), server-authoritative
       status updates with immediate cache update and background refresh
-- [ ] Phase 10: frontend tests
-  - [x] Vitest + Testing Library + MSW harness: stateful fake API, real routes, CI step
-  - [x] Lead list tests (unit + flows)
-  - [ ] Lead detail and status update tests
+- [x] Phase 10: frontend tests (80): Vitest + Testing Library + MSW with a stateful fake API;
+      unit, lead list and lead detail / status flows; each protection confirmed to be caught
 - [ ] Phase 11+: Docker, deployment

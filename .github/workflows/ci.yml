@@ -11,6 +11,24 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Real Postgres (same major version as docker-compose): the tests exercise migrations and,
+    # from later phases, ON CONFLICT, FOR UPDATE, JSONB and CHECK constraints.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: lead_intake
+          POSTGRES_PASSWORD: lead_intake
+          POSTGRES_DB: lead_intake_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lead_intake -d lead_intake_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://lead_intake:lead_intake@localhost:5432/lead_intake_test
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5

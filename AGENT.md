@@ -125,15 +125,18 @@ Condensed, in order.
 3. *"Write a persistent project context file with the frozen decisions and a phase plan."* → the
    spec used to drive code generation phase by phase.
 4. *"Complete phases 0 and 1: repo, docs seed, backend and frontend skeletons, CI. Commit as me and
-   push to GitHub."* → this commit set.
+   push to GitHub."* → the Phase 0–1 commit set.
+5. *"Start Phase 2. Three commits: database infrastructure; health checks and request logging;
+   tests, CI and docs."* → the Phase 2 commit set. Claude Code also installed Docker Desktop and
+   enabled WSL2 on the dev machine (the reboot was done by me).
 
 ## Verification Process
 
 - Every phase ends with `ruff check`, `ruff format --check` and `pytest` (backend), and
   `npm run lint` (oxlint) and `npm run build` (`tsc -b` + Vite) (frontend). CI repeats these on every push.
 - I read generated code before committing. Anything I can't explain gets simplified or rewritten.
-- Backend behaviour that depends on the database (constraints, locking, idempotency) will be tested
-  against real PostgreSQL, not SQLite.
+- Backend behaviour that depends on the database (migrations, constraints, locking, idempotency) is tested
+  against real PostgreSQL (Docker locally, a service container in CI), not SQLite.
 
 ## AI Contribution Log
 
@@ -162,7 +165,7 @@ Condensed, in order.
   The frontend `lint` and `build` pass. Manual checks: `/health` returns `{"status":"ok"}`, `/docs`
   loads, and the Vite dev server serves the app.
 
-### Phase 2: Database infrastructure (in progress)
+### Phase 2: Database infrastructure
 - **AI generated:** Docker Compose Postgres 17 service with a test-database init script, new settings
   (`DATABASE_URL`, `LOG_LEVEL`, Meta secrets), the `postgres://` → `postgresql+psycopg://` URL
   normalizer, SQLAlchemy engine/session factory, `get_db` dependency, declarative `Base` with a
@@ -187,3 +190,21 @@ Condensed, in order.
   `color_message` field from JSON logs.
 - **Verified by:** running uvicorn against Docker Postgres: 200 with DB up, 503 with DB stopped,
   200 again after restart; caller request id echoed, malformed request id replaced; ruff and pytest.
+
+### Phase 2: Tests, CI and docs
+- **AI generated:** test layout split into `tests/unit` (no database) and `tests/integration`
+  (real Postgres); a root conftest that forces `DATABASE_URL` to `TEST_DATABASE_URL` before the app
+  is imported; session-scoped Alembic `upgrade head` and per-test `TRUNCATE`; health tests for
+  DB up, DB unreachable (a real refused connection, not a mock) and request-ID handling; unit tests
+  for URL normalization and the JSON log formatter; a Postgres 17 service container in CI; README
+  sections for local setup, environment variables, tests and observability.
+- **Human decided:** schema for tests comes from the real migrations rather than `create_all()`,
+  so every test run also proves the migrations; unit tests must stay runnable without Docker.
+- **Caught and corrected during review:**
+  - Alembic's `fileConfig` disables all existing loggers by default, which would have silenced the
+    app's loggers whenever migrations run in-process (the test suite). Set
+    `disable_existing_loggers=False`.
+  - Ruff classified `alembic` as a first-party import because of the local `alembic/` folder, so
+    import order differed between files. Declared it third-party in the ruff isort config.
+- **Verified by:** 10 tests passing locally against Docker Postgres; ruff lint and format clean;
+  CI green with the Postgres service.

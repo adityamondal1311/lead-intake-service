@@ -1,15 +1,17 @@
 from logging.config import fileConfig
 
+from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from alembic import context
 from app.core.config import get_settings
 from app.db.base import Base
 
 config = context.config
 
+# disable_existing_loggers=False: when migrations run in-process (the test suite), keep the
+# app's loggers working instead of silently disabling them.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # The URL comes from app settings (DATABASE_URL), so migrations and the app always target the
 # same database. A URL set programmatically (e.g. by the test suite) takes precedence.

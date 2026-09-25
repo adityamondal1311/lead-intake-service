@@ -563,5 +563,7 @@ protection they guard is removed.
 - [x] Phase 7: hardening and verification: strict configuration, automated no-PII-in-logs and
       CORS tests, idempotent demo seed through the real services, OpenAPI examples. **Backend
       complete** (see [Backend checkpoint](#backend-checkpoint))
-- [x] Phase 8: frontend lead list: app shell, typed API client, URL-driven search / status filter /      pagination, loading / empty / error states, responsive table + cards- [ ] Phase 9: lead detail, status update and activity timeline (lead links show 404 until then)- [ ] Phase 10+: frontend tests, Docker, deployment
-- [ ] Phase 9+: lead detail and timeline, frontend tests, Docker, deployment
+- [x] Phase 8: frontend lead list: app shell, typed API client, URL-driven search / status
+      filter / pagination, loading / empty / error states, responsive table + cards
+- [ ] Phase 9: lead detail, status update and activity timeline (lead links show 404 until then)
+- [ ] Phase 10+: frontend tests, Docker, deployment

@@ -628,6 +628,9 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   `npx -y tsx --version`, which downloaded `tsx` into npm's global cache without asking first. It
   changed nothing in the project (`package.json`/lockfile untouched) and was not used; pure
   functions get proper tests in Phase 10.
+- **Caught after committing:** a `sed` edit to the README Progress list joined three items onto
+  one line and left a stale entry; fixed in a follow-up `docs:` commit (multi-line doc edits now
+  go through the editor tool, not `sed`).
 - **Verified by:** lint and strict build; screenshots against the real API: `?status=LOST`
   (6 matching), `?search=%20KUMAR%20` (trimmed, 1 match), `?page=2`, `?page=99` (corrected to
   page 2 of 2), `?status=FOO&page=abc&junk=1` (normalized), no-match state, 375 px cards and

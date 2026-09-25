@@ -206,6 +206,6 @@ full downgrade/upgrade round trip.
       indexes), database-level constraint tests
 - [ ] Phase 4: lead APIs
   - [x] `GET /leads` (pagination, status filter, search), `GET /leads/{id}`, JSON error envelope
-  - [ ] `PATCH /leads/{id}/status` (transactional, audited)
+  - [x] `PATCH /leads/{id}/status` (transactional, row-locked, audited; same status is a no-op)
   - [ ] API integration tests, API documentation
 - [ ] Phase 5+: webhook, frontend, Docker, deployment

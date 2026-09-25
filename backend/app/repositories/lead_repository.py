@@ -54,3 +54,18 @@ def list_leads(
 
 def get_by_id(session: Session, lead_id: uuid.UUID) -> Lead | None:
     return session.get(Lead, lead_id)
+
+
+def get_by_id_for_update(session: Session, lead_id: uuid.UUID) -> Lead | None:
+    """Load a lead and lock its row (SELECT ... FOR UPDATE) until the transaction ends.
+
+    A concurrent transaction that wants the same row waits here, so read-modify-write sequences
+    on one lead are serialized. populate_existing makes the ORM overwrite any copy of this lead
+    already in the session with the values read under the lock, instead of keeping stale ones.
+    """
+    return session.scalars(
+        select(Lead)
+        .where(Lead.id == lead_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).one_or_none()

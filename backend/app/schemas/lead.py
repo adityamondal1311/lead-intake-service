@@ -35,3 +35,13 @@ class LeadListResponse(CamelModel):
 class LeadDetailResponse(CamelModel):
     lead: LeadDetail
     activities: list[ActivityRead]  # newest first
+
+
+class LeadStatusUpdate(CamelModel):
+    status: LeadStatus
+
+
+class LeadStatusUpdateResponse(CamelModel):
+    lead: LeadDetail
+    # The STATUS_CHANGED activity that was recorded; null when the lead already had this status.
+    activity: ActivityRead | None

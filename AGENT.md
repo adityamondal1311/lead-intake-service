@@ -305,3 +305,18 @@ against real PostgreSQL.
   422 envelope for bad params and malformed ids, 404/405 envelopes, and a 500 with request id
   (database stopped) whose traceback appears only in the log; OpenAPI schema builds; ruff and the
   existing tests.
+
+### Phase 4: Transactional status updates
+- **AI generated:** `PATCH /leads/{id}/status`, `lead_service.update_status` (one transaction:
+  `SELECT ... FOR UPDATE` → no-op check → update → `STATUS_CHANGED` activity), the locking
+  repository query, the append-only `activity_repository.add`, request/response schemas.
+- **Human decided:** the row lock (not optimistic versioning) so the audit `from` value is always
+  the status actually replaced; same-status requests write nothing and return `activity: null`;
+  actor recorded as `user:dashboard` until authentication exists.
+- **Caught and corrected during review:** the locking query uses `populate_existing`, because the
+  ORM would otherwise return an already-loaded copy of the lead with pre-lock values, silently
+  defeating the lock.
+- **Verified by:** manual PATCH calls (change, no-op, invalid/missing status, unknown lead,
+  timeline shows the new activity first) and a manual lock check: a `psql` transaction held
+  `FOR UPDATE` on a lead for 3 s and changed its status; a concurrent API PATCH waited ~2.8 s and
+  recorded `from` = the status the other transaction committed, not the stale one.

@@ -8,7 +8,14 @@ from app.api.deps import get_db
 from app.models.enums import LeadStatus
 from app.schemas.activity import ActivityRead
 from app.schemas.common import ErrorResponse, Pagination
-from app.schemas.lead import LeadDetail, LeadDetailResponse, LeadListResponse, LeadSummary
+from app.schemas.lead import (
+    LeadDetail,
+    LeadDetailResponse,
+    LeadListResponse,
+    LeadStatusUpdate,
+    LeadStatusUpdateResponse,
+    LeadSummary,
+)
 from app.services import lead_service
 
 router = APIRouter(prefix="/leads", tags=["leads"])
@@ -58,4 +65,22 @@ def get_lead(db: DbSession, lead_id: uuid.UUID) -> LeadDetailResponse:
     return LeadDetailResponse(
         lead=LeadDetail.model_validate(lead),
         activities=[ActivityRead.model_validate(activity) for activity in activities],
+    )
+
+
+@router.patch(
+    "/{lead_id}/status",
+    summary="Change a lead's status",
+    description="Updates the status and records a `STATUS_CHANGED` activity in the same "
+    "transaction. Any status may move to any other. Setting the current status again is a "
+    "no-op: nothing is written and `activity` is `null`.",
+    responses={**_NOT_FOUND, **_VALIDATION_ERROR},
+)
+def update_lead_status(
+    db: DbSession, lead_id: uuid.UUID, body: LeadStatusUpdate
+) -> LeadStatusUpdateResponse:
+    lead, activity = lead_service.update_status(db, lead_id, body.status)
+    return LeadStatusUpdateResponse(
+        lead=LeadDetail.model_validate(lead),
+        activity=ActivityRead.model_validate(activity) if activity else None,
     )

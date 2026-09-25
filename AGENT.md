@@ -161,3 +161,15 @@ Condensed, in order.
 - **Verified by:** `ruff check`, `ruff format --check` and `pytest` passing locally on Python 3.12.
   The frontend `lint` and `build` pass. Manual checks: `/health` returns `{"status":"ok"}`, `/docs`
   loads, and the Vite dev server serves the app.
+
+### Phase 2: Database infrastructure (in progress)
+- **AI generated:** Docker Compose Postgres 17 service with a test-database init script, new settings
+  (`DATABASE_URL`, `LOG_LEVEL`, Meta secrets), the `postgres://` → `postgresql+psycopg://` URL
+  normalizer, SQLAlchemy engine/session factory, `get_db` dependency, declarative `Base` with a
+  constraint naming convention, and Alembic config reading the URL from app settings.
+- **Human decided:** split Phase 2 into three commits (infrastructure; health + observability;
+  tests + CI + docs), Postgres 17, a separate `lead_intake_test` database so tests never touch dev data.
+- **Verified by:** `ruff check`/`ruff format --check`, `pytest`, `alembic upgrade head --sql`
+  (offline) and a manual check of URL normalization. A live `docker compose up` +
+  `alembic upgrade head` check is pending Docker setup on the dev machine and is done before the
+  next commit.

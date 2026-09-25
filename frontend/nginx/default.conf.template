@@ -1,0 +1,30 @@
+# Rendered at container start by the nginx image (envsubst): ${PORT} and ${API_ORIGIN} come from
+# the environment; nginx's own $variables are left alone.
+server {
+    listen ${PORT};
+    listen [::]:${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    server_tokens off;
+
+    gzip on;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # Vite's hashed bundles: the file name changes whenever the content does, so they can be
+    # cached for a year. A missing asset is a 404, never index.html served as JavaScript.
+    location /assets/ {
+        include /etc/nginx/conf.d/security-headers.inc;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    # Everything else is the single-page app: real files as-is, and any other path (a deep link
+    # such as /leads/<id>, or a refresh on one) gets index.html so the client router takes over.
+    # index.html is never cached, so a new deploy is picked up on the next load.
+    location / {
+        include /etc/nginx/conf.d/security-headers.inc;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri $uri/ /index.html;
+    }
+}

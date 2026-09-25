@@ -1,0 +1,9 @@
+# Only what the build needs goes into the context. Secrets never do.
+.env
+.env.*
+node_modules
+dist
+coverage
+*.log
+Dockerfile
+.dockerignore

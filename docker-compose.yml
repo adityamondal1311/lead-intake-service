@@ -1,5 +1,5 @@
 # The whole application: `docker compose up --build` from a clean clone.
-#   frontend  http://localhost:3000      (added with the frontend image)
+#   frontend  http://localhost:3000
 #   backend   http://localhost:8000      (API docs at /docs)
 #   db        localhost:5432             (also used directly by local dev and the test suite)
 #
@@ -41,6 +41,18 @@ services:
     depends_on:
       db:
         # Healthy, not merely started: migrations run at backend start and need a ready database.
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Compiled into the bundle: the URL the *browser* uses to reach the API (the host port).
+        VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "3000:8080"
+    depends_on:
+      backend:
         condition: service_healthy
 
 volumes:

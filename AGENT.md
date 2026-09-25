@@ -791,3 +791,26 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   webhook from the host (processed, then duplicate); restart → migrations a no-op and data kept;
   `docker compose stop` in 0.9 s with uvicorn's graceful-shutdown lines (not the 10 s kill); a
   wrong database password → migration fails, exit code 1, uvicorn never starts.
+
+### Phase 11: Frontend container
+- **AI generated:** `frontend/Dockerfile` (Node build stage with `npm ci --ignore-scripts` and the
+  API origin as a build argument; `nginx-unprivileged` runtime serving only `dist/`), the nginx
+  templates (`$PORT`, SPA fallback, year-long immutable caching for hashed assets, `no-cache`
+  HTML, 404 for missing assets, gzip, security headers with a CSP limited to self + the API
+  origin), `.dockerignore`, and the compose `frontend` service on `:3000` (starts once the backend
+  is healthy).
+- **Human decided:** `nginxinc/nginx-unprivileged` (non-root) over `nginx:alpine`; the API origin
+  is baked in at build time (changing it means rebuilding; runtime config deliberately deferred,
+  one frontend/backend topology); base images pinned by version and digest (`node:24.19.0-alpine`,
+  `nginx-unprivileged:1.31.6-alpine`); no Node at runtime.
+- **Reviewed specifically:** an nginx `add_header` inside a `location` drops every inherited
+  one, so setting Cache-Control per location would silently strip the security headers. They live
+  in one snippet included in every location (named `.inc` so nginx does not also load it globally
+  from `conf.d/*.conf`), and were checked on both HTML and asset responses.
+- **Verified by:** image 82.8 MB, runs as uid 101; `/` and a deep link `/leads/<id>` return the
+  app's `index.html` (200 text/html); `index.html` `no-cache`, hashed JS `max-age=31536000,
+  immutable`, a missing asset 404; gzip (bundle 376 KB → 137 KB); CSP `connect-src 'self'
+  http://localhost:8000`; screenshots of `localhost:3000` showing live data (so CSP, CORS for
+  `:3000` and the compiled API URL all line up) and a detail page loaded directly by URL; framing
+  the app in an iframe renders blank (`frame-ancestors 'none'`, `X-Frame-Options: DENY`); no
+  `.env`, Node or source maps in the image.

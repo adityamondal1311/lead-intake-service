@@ -670,6 +670,7 @@ protection they guard is removed.
       unit, lead list and lead detail / status flows; each protection confirmed to be caught
 - [ ] Phase 11: Docker
   - [x] Backend image (multi-stage, uv lockfile, non-root, migrations at start, graceful shutdown)
-  - [ ] Frontend image (nginx, non-root) and full-stack compose
+  - [x] Frontend image (nginx, non-root, SPA deep links, caching, gzip, security headers) and
+        full-stack compose
   - [ ] CI: build images and smoke-test the stack
 - [ ] Phase 12+: Railway deployment, final documentation

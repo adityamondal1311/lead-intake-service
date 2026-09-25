@@ -1,5 +1,6 @@
 import { Link, useLocation, useParams } from 'react-router'
 
+import ActivityTimeline from '../components/ActivityTimeline'
 import ErrorState from '../components/ErrorState'
 import LeadDetailSkeleton from '../components/LeadDetailSkeleton'
 import LeadDetailsCard from '../components/LeadDetailsCard'
@@ -91,8 +92,23 @@ export default function LeadDetailPage() {
         Created <RelativeTime iso={lead.createdAt} now={now} /> · via {sourceLabel(lead.source)}
       </p>
 
-      <div className="mt-6 max-w-xl">
-        <LeadDetailsCard lead={lead} />
+      {/* Desktop: details left, activity right. Phone: activity first (what changed matters
+          most), details below. */}
+      <div className="mt-6 grid gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-2">
+          <LeadDetailsCard lead={lead} />
+        </div>
+        <section
+          aria-labelledby="activity-heading"
+          className="order-first rounded-lg border border-zinc-200 bg-white p-5 lg:order-none lg:col-span-3"
+        >
+          <h2 id="activity-heading" className="text-sm font-semibold text-zinc-900">
+            Activity
+          </h2>
+          <div className="mt-4">
+            <ActivityTimeline activities={data.activities} now={now} />
+          </div>
+        </section>
       </div>
     </>
   )

@@ -438,6 +438,24 @@ being sent to the API.
   network errors and 5xx). Other errors show the reason, request id and **Try again**.
 - The browser tab title follows the page ("Rohan Mehta · Lead Intake", "Lead not found · …").
 
+**Activity timeline.** The lead's audit trail in the order the API returns it (newest first; the
+client does not re-sort), each entry turned from a database event into a sentence:
+
+| Activity | Shown as |
+|---|---|
+| `LEAD_CREATED` | "Lead created from Meta Ads" |
+| `LEAD_UPDATED` | "Lead updated: email, phone" plus one line per field, old value struck through → new value (readable field names; dates formatted) |
+| `STATUS_CHANGED` | "Status changed from [New] to [Contacted]" with status badges |
+
+Every entry shows who did it ("Meta webhook" / "Dashboard"), a relative time with the exact time on
+hover, and, for webhook entries, the Meta event id in muted monospace. `UNCHANGED` webhook
+deliveries never appear: they are recorded as deliveries, not as activity.
+
+Activity `details` arrive as untyped JSON, so `parseActivity` checks each entry's real shape before
+narrowing it to a typed union (`LEAD_CREATED` → `{source}`, `LEAD_UPDATED` → `{changes}`,
+`STATUS_CHANGED` → `{from, to}`). An entry that does not match its type renders as a generic
+"Activity recorded" line instead of breaking the page.
+
 ### 4. Demo data (optional)
 
 ```bash
@@ -579,6 +597,6 @@ protection they guard is removed.
       filter / pagination, loading / empty / error states, responsive table + cards
 - [ ] Phase 9: lead detail, status update and activity timeline
   - [x] Lead detail page (contact, campaign, reference ids, back to the same list view, not-found)
-  - [ ] Activity timeline
+  - [x] Activity timeline (typed activities, readable diffs, actors, event ids, safe fallback)
   - [ ] Status updates with live timeline refresh
 - [ ] Phase 10+: frontend tests, Docker, deployment

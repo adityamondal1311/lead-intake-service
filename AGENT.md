@@ -652,3 +652,21 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   request is cancelled through the `AbortSignal`), not a retry, which would follow ~1 s later.
 - **Verified by:** lint and strict build; screenshots of a seeded lead with a history (desktop and
   375 px, long id truncated), an unknown UUID and `/leads/hello` (both "Lead not found").
+
+### Phase 9: Activity timeline
+- **AI generated:** per-type details interfaces and the `TypedActivity` union, `parseActivity`
+  (runtime shape check), actor and field labels, `ActivityTimeline` (sentences, field diffs,
+  status badges, inline SVG icons, event ids), and the two-column detail layout (activity first
+  on phones).
+- **Human decided:** activity-specific types rather than `Record<string, unknown>`; a generic
+  fallback line rather than a crash for unexpected data; render in API order (no client
+  re-sorting by formatted times); `UNCHANGED` deliveries are not business activity and never
+  appear; diff keys use the API's field names so the frontend only maps them to labels.
+- **Reviewed specifically:** TypeScript types describe what the API promises but do not check
+  what arrives, so the union is only produced after `parseActivity` validates the shape; the
+  network type keeps `details: unknown` until then.
+- **Verified by:** lint and strict build; screenshots against seeded data: a lead with creation,
+  an email + phone diff and a status change; the reopened lead's five-entry history (desktop and
+  375 px, activity first); a name change. The fallback was checked by inserting a malformed
+  `STATUS_CHANGED` row (empty details) into the **dev** database with `psql`, confirming
+  "Activity recorded" rendered while the rest of the timeline stayed intact, then deleting it.

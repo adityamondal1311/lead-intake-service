@@ -243,8 +243,8 @@ npm run dev                               # http://localhost:5173
 | `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON list of allowed browser origins |
 | `DATABASE_URL` | local compose DB | `postgres://` and `postgresql://` are accepted and rewritten to the psycopg 3 driver (Railway supplies the former) |
 | `TEST_DATABASE_URL` | local `lead_intake_test` | Used only by pytest |
-| `META_APP_SECRET` | empty | Verifies the webhook `X-Hub-Signature-256` HMAC *(used from the webhook phase)* |
-| `META_VERIFY_TOKEN` | empty | Meta subscription handshake token *(used from the webhook phase)* |
+| `META_APP_SECRET` | empty | Key for the webhook `X-Hub-Signature-256` HMAC. Empty → every delivery is rejected. **Required** (startup fails) when `ENVIRONMENT=production` |
+| `META_VERIFY_TOKEN` | empty | Token Meta sends in the subscription handshake. Empty → handshake always fails. **Required** when `ENVIRONMENT=production` |
 
 Only `.env.example` is committed; `.env` is gitignored.
 
@@ -296,4 +296,8 @@ tests were confirmed to fail when the row lock or the timestamp fix is removed.
       indexes), database-level constraint tests
 - [x] Phase 4: lead APIs: list (pagination, filter, search), detail with timeline, transactional
       row-locked status updates, JSON error envelope, API integration tests
-- [ ] Phase 5+: webhook, frontend, Docker, deployment
+- [ ] Phase 5: Meta webhook
+  - [x] Signature verification (HMAC-SHA256), subscription handshake, production secret check
+  - [ ] Payload validation and transactional lead ingestion
+  - [ ] Tests, test sender script, webhook documentation
+- [ ] Phase 6+: webhook idempotency, frontend, Docker, deployment

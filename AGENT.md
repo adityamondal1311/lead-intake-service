@@ -350,3 +350,19 @@ against real PostgreSQL.
   5/5 runs; with the activity default set back to `now()` on the test database, the timeline-order
   check failed 3/5 rounds. Both pass with the real code.
 - **Verified by:** 62 tests passing against Docker Postgres; ruff clean; CI.
+
+### Phase 5: Webhook signature verification and handshake
+- **AI generated:** `app/core/security.py` (HMAC-SHA256 over the raw body, constant-time
+  comparison, verify-token check), `GET /webhook/meta-lead` handshake, `INVALID_SIGNATURE` /
+  `FORBIDDEN` errors, a startup check refusing `ENVIRONMENT=production` without
+  `META_APP_SECRET` and `META_VERIFY_TOKEN`.
+- **Human decided:** an empty secret or token never validates (anyone can compute an HMAC with an
+  empty key); the 401 message stays unspecific so callers learn nothing about why a signature
+  failed; settings are injected as a dependency so tests can override them.
+- **Reviewed specifically:** comparisons are done on bytes, so a non-ASCII header value is simply
+  rejected instead of raising `TypeError` inside `compare_digest`.
+- **Verified by:** our signature matches `openssl dgst -sha256 -hmac` byte for byte; tampered body,
+  wrong secret, missing header, missing `sha256=` prefix, empty secret and non-ASCII header all
+  rejected; handshake echoes the challenge as `text/plain` and returns 403 for wrong token, wrong
+  mode, missing challenge or no params; production startup refused without secrets; ruff and the
+  existing 62 tests.

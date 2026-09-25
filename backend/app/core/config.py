@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +27,24 @@ class Settings(BaseSettings):
             if value.startswith(prefix):
                 return "postgresql+psycopg://" + value.removeprefix(prefix)
         return value
+
+    # Fail fast at startup instead of running a production webhook that rejects every delivery
+    # (or, worse, a misconfiguration nobody notices). Locally the values may be empty; the
+    # webhook then simply rejects all requests.
+    @model_validator(mode="after")
+    def require_webhook_secrets_in_production(self) -> "Settings":
+        if self.environment == "production":
+            missing = [
+                name
+                for name, value in (
+                    ("META_APP_SECRET", self.meta_app_secret),
+                    ("META_VERIFY_TOKEN", self.meta_verify_token),
+                )
+                if not value
+            ]
+            if missing:
+                raise ValueError(f"{', '.join(missing)} must be set when ENVIRONMENT=production")
+        return self
 
 
 # Cached so settings are parsed once; tests can call get_settings.cache_clear() to reload.

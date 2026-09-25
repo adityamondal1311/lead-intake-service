@@ -1,10 +1,9 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Query
 
-from app.api.deps import get_db
+from app.api.deps import DbSession
 from app.models.enums import LeadStatus
 from app.schemas.activity import ActivityRead
 from app.schemas.common import ErrorResponse, Pagination
@@ -19,8 +18,6 @@ from app.schemas.lead import (
 from app.services import lead_service
 
 router = APIRouter(prefix="/leads", tags=["leads"])
-
-DbSession = Annotated[Session, Depends(get_db)]
 
 _VALIDATION_ERROR = {422: {"model": ErrorResponse, "description": "Invalid parameters"}}
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Lead not found"}}

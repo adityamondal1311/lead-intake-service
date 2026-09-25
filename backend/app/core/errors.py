@@ -37,6 +37,20 @@ class LeadNotFoundError(AppError):
         super().__init__("Lead not found")
 
 
+class InvalidSignatureError(AppError):
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "INVALID_SIGNATURE"
+
+    def __init__(self) -> None:
+        # Deliberately unspecific: the caller learns nothing about why the signature failed.
+        super().__init__("Missing or invalid webhook signature")
+
+
+class ForbiddenError(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+    code = "FORBIDDEN"
+
+
 def error_response(
     status_code: int,
     code: str,

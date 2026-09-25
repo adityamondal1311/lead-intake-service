@@ -28,7 +28,13 @@ class Activity(Base):
     details: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default=text("'{}'::jsonb")
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # clock_timestamp(), not now(): now() is the transaction's start time, and a transaction that
+    # waited on a row lock may have started before the one it waited for, which would put its
+    # activity earlier on the timeline than the change it followed. clock_timestamp() is taken at
+    # INSERT time, after the lock is held, so timeline order matches the real order of changes.
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.clock_timestamp()
+    )
 
 
 # Activity timeline for one lead, newest first: WHERE lead_id = ? ORDER BY created_at DESC.

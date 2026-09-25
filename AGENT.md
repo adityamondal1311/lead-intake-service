@@ -320,3 +320,17 @@ against real PostgreSQL.
   timeline shows the new activity first) and a manual lock check: a `psql` transaction held
   `FOR UPDATE` on a lead for 3 s and changed its status; a concurrent API PATCH waited ~2.8 s and
   recorded `from` = the status the other transaction committed, not the stale one.
+
+### Phase 4: Fix — activity timeline order under concurrent updates
+- **Found by:** an extra probe while writing the concurrency test: 20 runs of four simultaneous
+  status changes on one lead. The audit *data* was always correct (unbroken from/to chain), but
+  ordering the timeline by `created_at` disagreed with the real order of changes in 17/20 runs.
+- **Cause:** `activities.created_at` defaulted to `now()`, the transaction *start* time. A
+  transaction that waited on the row lock often started before the one it waited for.
+- **Fix:** default to `clock_timestamp()` (taken at INSERT, after the lock is held); new migration
+  alters only the column default. Probe after the fix: 0/20 mismatches.
+- **Also found:** `alembic check` (the Phase 3 drift test) did not compare server defaults, so it
+  reported no drift while model and database disagreed. Enabled `compare_server_default` in
+  `alembic/env.py` and confirmed it now detects exactly this case.
+- **Human decided:** ship it as a separate `fix:` commit rather than folding a schema change into
+  the test commit.

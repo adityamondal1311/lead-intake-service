@@ -668,4 +668,8 @@ protection they guard is removed.
       status updates with immediate cache update and background refresh
 - [x] Phase 10: frontend tests (80): Vitest + Testing Library + MSW with a stateful fake API;
       unit, lead list and lead detail / status flows; each protection confirmed to be caught
-- [ ] Phase 11+: Docker, deployment
+- [ ] Phase 11: Docker
+  - [x] Backend image (multi-stage, uv lockfile, non-root, migrations at start, graceful shutdown)
+  - [ ] Frontend image (nginx, non-root) and full-stack compose
+  - [ ] CI: build images and smoke-test the stack
+- [ ] Phase 12+: Railway deployment, final documentation

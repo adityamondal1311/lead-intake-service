@@ -1,18 +1,18 @@
-from logging.config import fileConfig
-
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import app.models  # noqa: F401  (registers every table on Base.metadata for autogenerate)
 from app.core.config import get_settings
+from app.core.logging import configure_logging
 from app.db.base import Base
 
 config = context.config
 
-# disable_existing_loggers=False: when migrations run in-process (the test suite), keep the
-# app's loggers working instead of silently disabling them.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name, disable_existing_loggers=False)
+# Migration logs use the app's JSON logging (one object per line on stdout), so a deploy's log
+# stream has one format from "applying migrations" through to serving requests. This replaces
+# alembic.ini's plain-text logging config; unlike fileConfig, it never disables the app's
+# existing loggers when migrations run in-process (the test suite).
+configure_logging(get_settings().log_level)
 
 # The URL comes from app settings (DATABASE_URL), so migrations and the app always target the
 # same database. A URL set programmatically (e.g. by the test suite) takes precedence.

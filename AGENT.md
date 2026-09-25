@@ -766,3 +766,28 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   "before the refetch" test fails. Restored; all pass.
 - **Verified by:** 80 frontend tests, three consecutive full runs green (~8 s); lint and strict
   build.
+
+### Phase 11: Backend container
+- **AI generated:** `backend/Dockerfile` (uv build stage with `uv sync --locked --no-dev`, slim
+  runtime stage with only the virtualenv and code, non-root `app` user, stdlib healthcheck on
+  `/health`), `docker-entrypoint.sh` (`set -eu`, `alembic upgrade head`, `exec uvicorn` on `$PORT`
+  with proxy headers), `.dockerignore`, the compose `backend` service (waits for a healthy `db`),
+  and `.gitattributes`.
+- **Human decided:** base images pinned by version **and digest** (`python:3.12.14-slim`,
+  `uv:0.12.18`, matching the dev machine; `postgres:17.11-alpine` in compose), so rebuilds are
+  reproducible; migrations run at container start and a failed migration stops the container
+  (single-instance trade-off; a release step on Railway); local compose may use `change-me`
+  secrets, a deployment must set `ENVIRONMENT=production` with real ones.
+- **Caught and corrected:**
+  - Windows checkouts would convert the entrypoint to CRLF and break `/bin/sh` inside the Linux
+    container; `.gitattributes` forces LF for `*.sh`, and the entrypoint runs as `sh ./…` so it
+    does not depend on the executable bit (not tracked on Windows).
+  - The container's startup log mixed Alembic's plain-text lines with the app's JSON. `env.py` now
+    uses the app's JSON logging and the plain-text config was removed from `alembic.ini`: the whole
+    log stream is JSON (0 non-JSON lines after a rebuild). Backend suite re-run: 170 pass.
+- **Verified by:** clean start from an empty volume (healthy in 12 s; both migrations applied;
+  `/leads` answers, so the schema exists); uvicorn is PID 1 ("server process [1]"); runs as uid
+  10001; no `.env`, tests, uv, pytest or ruff in the image; seed inside the container; a signed
+  webhook from the host (processed, then duplicate); restart → migrations a no-op and data kept;
+  `docker compose stop` in 0.9 s with uvicorn's graceful-shutdown lines (not the 10 s kill); a
+  wrong database password → migration fails, exit code 1, uvicorn never starts.

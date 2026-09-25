@@ -1,6 +1,14 @@
+# The whole application: `docker compose up --build` from a clean clone.
+#   frontend  http://localhost:3000      (added with the frontend image)
+#   backend   http://localhost:8000      (API docs at /docs)
+#   db        localhost:5432             (also used directly by local dev and the test suite)
+#
+# Local defaults only. Secrets can be overridden in a root .env (gitignored); a deployment must
+# set real values and ENVIRONMENT=production, which refuses to start without them.
+
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17.11-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     environment:
       POSTGRES_USER: lead_intake
       POSTGRES_PASSWORD: lead_intake
@@ -16,6 +24,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      ENVIRONMENT: local
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # postgres:// is rewritten to the psycopg driver by the app (as Railway's URL will be).
+      DATABASE_URL: postgresql://lead_intake:lead_intake@db:5432/lead_intake
+      # The containerised frontend (3000) and the Vite dev server (5173).
+      CORS_ORIGINS: '["http://localhost:3000", "http://localhost:5173"]'
+      META_APP_SECRET: ${META_APP_SECRET:-change-me}
+      META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-change-me}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        # Healthy, not merely started: migrations run at backend start and need a ready database.
+        condition: service_healthy
 
 volumes:
   pgdata:

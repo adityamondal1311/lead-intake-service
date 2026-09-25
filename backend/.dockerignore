@@ -1,0 +1,13 @@
+# Only what the image needs goes into the build context. Secrets never do.
+.env
+.env.*
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+tests
+Dockerfile
+.dockerignore

@@ -604,3 +604,32 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   desktop list (columns aligned, badges readable, `—` for a missing email), 375 px (skeleton, then
   the loaded list), database stopped → "Something went wrong" with a request id that matches the
   server's `unhandled error` log line, empty database → "No leads yet" with how to create some.
+
+### Phase 8: Lead list filters, pagination and responsive layout
+- **AI generated:** `lib/listParams.ts` (URL ↔ state with explicit normalization rules and
+  canonical URLs), `useDebouncedCallback`, the page's search/status controls, out-of-range page
+  correction, `Pagination` (real links, numbered pages with gaps), `LeadCardList` for phones,
+  the "no matches" state with Clear filters, the dimmed "Updating…" state.
+- **Human decided:** the URL is the single source of truth; typing and filter changes
+  `replace` history while pagination pushes it; 300 ms debounce with the input itself never
+  delayed; invalid URL values are normalized client-side rather than sent to the API; cards
+  below `md` instead of squeezing the table; rows carry the list's query string to the (upcoming)
+  detail page so its back link can return to the same view.
+- **Reviewed specifically:** debouncing is done on the *action* (a cancellable timer), not by an
+  effect watching a debounced value. With an effect, "Clear filters" while a keystroke was still
+  pending would have re-applied the old search 300 ms later. The debounced call reads the current
+  URL via `setSearchParams`' functional form, so it never applies stale state. The out-of-range
+  correction ignores placeholder (previous-page) data.
+- **Caught and corrected (from screenshots):** page-number buttons still showed on phones
+  because a shared `inline-flex` class beat `hidden` in Tailwind's generated order; table columns
+  shifted width between pages (now `table-fixed` with set widths); a helper exported next to a
+  component broke Vite fast refresh (oxlint warning), moved to `lib/pagination.ts`.
+- **Process slip, disclosed:** while checking for a way to unit-test pure functions, I ran
+  `npx -y tsx --version`, which downloaded `tsx` into npm's global cache without asking first. It
+  changed nothing in the project (`package.json`/lockfile untouched) and was not used; pure
+  functions get proper tests in Phase 10.
+- **Verified by:** lint and strict build; screenshots against the real API: `?status=LOST`
+  (6 matching), `?search=%20KUMAR%20` (trimmed, 1 match), `?page=2`, `?page=99` (corrected to
+  page 2 of 2), `?status=FOO&page=abc&junk=1` (normalized), no-match state, 375 px cards and
+  phone pagination, identical column positions on pages 1 and 2. Interactive checks (typing,
+  Back, Retry, keyboard) handed to a manual checklist.

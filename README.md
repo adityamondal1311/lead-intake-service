@@ -399,6 +399,33 @@ only network errors and 5xx (at most twice); a 4xx fails the same way every time
 immediately. Each query passes TanStack's `AbortSignal` to `fetch`, so a superseded request is
 cancelled and can never overwrite newer data.
 
+**Lead list: the URL is the state.** Search, status and page live in the query string
+(`/?search=kumar&status=LOST&page=2`), so any view can be shared or bookmarked and Back works.
+
+| Parameter | Rule |
+|---|---|
+| `status` | one of the five statuses; missing or unknown → all statuses |
+| `page` | integer ≥ 1; missing or invalid → 1; past the last page → corrected to the last page once the total is known |
+| `search` | trimmed, ≤ 100 characters; whitespace-only → no search |
+
+Defaults are left out, so every view has one canonical URL (the unfiltered first page is just
+`/`), and a hand-edited URL such as `/?status=FOO&page=abc` is cleaned up in place instead of
+being sent to the API.
+
+- **Search** updates the input immediately; the URL (and so the request) follows 300 ms after
+  typing pauses. Typing and filter changes **replace** the history entry (Back does not step
+  through every keystroke) and reset to page 1; **pagination links push** a history entry, so
+  Back returns to the previous page. A pending search is cancelled by "Clear filters".
+- **While a new page or filter loads,** the current rows stay visible but dimmed ("Updating…"),
+  instead of flashing back to a loading state.
+- **States:** skeleton on first load; "No leads yet" (empty database) vs "No leads match these
+  filters" with **Clear filters**; errors show the reason, the request id and **Try again**.
+- **Responsive:** a table from the `md` breakpoint (fixed column widths, so columns do not jump
+  between pages), stacked cards below it; on phones, pagination is Prev / "x of y" / Next.
+- **Accessible:** real `<table>` with header cells; each lead is a real link (the whole row is
+  clickable through it); labelled search and status inputs; visible focus rings; the result count
+  is announced via a live region; status is shown as text, colour only supplements it.
+
 ### 4. Demo data (optional)
 
 ```bash
@@ -536,9 +563,5 @@ protection they guard is removed.
 - [x] Phase 7: hardening and verification: strict configuration, automated no-PII-in-logs and
       CORS tests, idempotent demo seed through the real services, OpenAPI examples. **Backend
       complete** (see [Backend checkpoint](#backend-checkpoint))
-- [ ] Phase 8: frontend lead list
-  - [x] App shell: Tailwind v4, react-router v8, TanStack Query v5, layout, 404 and error pages
-  - [x] Typed API client (ApiError, retry policy, cancellation) and lead list with loading,
-        empty and error states
-  - [ ] Search, status filter, pagination, responsive layout
+- [x] Phase 8: frontend lead list: app shell, typed API client, URL-driven search / status filter /      pagination, loading / empty / error states, responsive table + cards- [ ] Phase 9: lead detail, status update and activity timeline (lead links show 404 until then)- [ ] Phase 10+: frontend tests, Docker, deployment
 - [ ] Phase 9+: lead detail and timeline, frontend tests, Docker, deployment

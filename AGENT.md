@@ -562,3 +562,21 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   `/docs`; `/docs`, `/openapi.json`, `/health` OK; signed webhook `CREATED` → same event
   `duplicate` → changed phone `UPDATED`; PATCH status; detail shows the three activities in
   order; zero PII in the server log; 170 tests pass; ruff clean.
+
+### Phase 8: Frontend app shell
+- **AI generated:** Tailwind v4 via `@tailwindcss/vite` with a three-part design vocabulary
+  (neutral, indigo accent, status colours) and a global `:focus-visible` ring; react-router data
+  router with a layout, a 404 page and a route error page; the TanStack Query client; a
+  skip-to-content link.
+- **Human decided:** the packages (react-router, TanStack Query, Tailwind); indigo accent and a
+  neutral internal-tool look that does not imitate Stylework branding; frontend tests in Phase 10,
+  not piecemeal now; clicking a lead shows 404 until the detail page arrives (agreed gap).
+- **Caught and corrected:** npm installed react-router **v8**, not the v7 in the plan. Read its
+  upgrade notes before writing code: `RouterProvider` now comes from `react-router/dom`
+  (everything else from `react-router`), and it needs React ≥ 19.2.7 (we have 19.2.8).
+- **Verification tooling:** there is no browser in the dev loop, so pages are screenshotted with
+  the Edge that ships with Windows (`msedge --headless --screenshot`), nothing installed. The first
+  375 px screenshot looked broken, but headless Chromium enforces a ~500 px minimum window width;
+  mobile shots now render the page inside a 375 px iframe, a true phone viewport.
+- **Verified by:** `npm run lint`, `npm run build` (strict `tsc -b`); screenshots of `/` at desktop
+  width and of an unknown route at 375 px (404 page, no overflow).

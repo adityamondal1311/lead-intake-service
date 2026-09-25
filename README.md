@@ -31,7 +31,12 @@ backend/
   tests/
     unit/         no database needed
     integration/  run against real PostgreSQL
-frontend/         React + TypeScript dashboard (Vite)
+frontend/src/
+  main.tsx        QueryClientProvider + RouterProvider
+  router.tsx      routes (react-router v8, data mode)
+  components/     app layout and shared UI
+  pages/          one component per route
+  lib/            query client, helpers
 docker-compose.yml  local PostgreSQL
 .github/          CI workflow
 AGENT.md          AI usage, architecture decisions, contribution log
@@ -516,4 +521,8 @@ protection they guard is removed.
 - [x] Phase 7: hardening and verification: strict configuration, automated no-PII-in-logs and
       CORS tests, idempotent demo seed through the real services, OpenAPI examples. **Backend
       complete** (see [Backend checkpoint](#backend-checkpoint))
-- [ ] Phase 8+: frontend, Docker, deployment
+- [ ] Phase 8: frontend lead list
+  - [x] App shell: Tailwind v4, react-router v8, TanStack Query v5, layout, 404 and error pages
+  - [ ] Typed API client and lead list page
+  - [ ] Search, status filter, pagination, responsive layout
+- [ ] Phase 9+: lead detail and timeline, frontend tests, Docker, deployment

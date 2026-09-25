@@ -1,0 +1,25 @@
+@import 'tailwindcss';
+
+/*
+ * Design vocabulary, kept deliberately small:
+ *   neutral (Tailwind zinc) for surfaces, borders and text;
+ *   accent (indigo) for anything interactive;
+ *   status colours only for lead status badges (see src/lib/constants.ts).
+ */
+@theme {
+  --color-accent-50: var(--color-indigo-50);
+  --color-accent-100: var(--color-indigo-100);
+  --color-accent-600: var(--color-indigo-600);
+  --color-accent-700: var(--color-indigo-700);
+}
+
+@layer base {
+  html {
+    @apply bg-zinc-50 text-zinc-900 antialiased;
+  }
+
+  /* A visible focus ring for keyboard users everywhere, never removed without replacement. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent-600;
+  }
+}

@@ -692,3 +692,26 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   Contacted · by Dashboard · just now" on top), and the list showing Contacted. The in-browser
   interaction (Saving…, instant update, error revert) is on the manual checklist and is the first
   target for the Phase 10 tests.
+
+### Phase 10: Frontend test harness
+- **AI generated:** Vitest config (jsdom), `src/test/setup.ts`, the MSW server and stateful fake
+  API (`src/test/fakeApi.ts`), `renderApp` (real routes in a memory router, fresh query client),
+  two smoke tests, the `test` / `test:watch` scripts and the CI step; `router.tsx` now exports
+  `routes` and `lib/queryClient.ts` gained a `createQueryClient` factory.
+- **Human decided:** frontend tests use **MSW rather than mocking the API client**, keeping tests
+  at the network boundary so the real client, request construction, error handling, retry
+  behaviour and cancellation stay under test. The fake API is **stateful** because PATCH should
+  affect later GETs, so tests verify application flows rather than isolated mocked responses.
+  Unhandled requests fail tests. No upgrades to the app's stack to suit the test tools. Browser
+  E2E (Playwright) deliberately deferred: the frontend is tested through rendered user
+  interactions against a faithful MSW API, while the backend is tested against real PostgreSQL.
+- **Compatibility checked before installing:** vitest 5 (Vite 8 peer), jsdom 30 (needs Node ≥
+  24.15; local 24.19, CI Node 24), Testing Library React 16.3 (React 19), jest-dom 7, msw 2.15. Added
+  `@testing-library/dom`, a required peer of `@testing-library/react` that npm does not install on
+  its own. npm's install-script policy blocked `msw`'s postinstall (it only copies a browser
+  service worker, unneeded for `msw/node`); left blocked.
+- **Caught:** the very first `vitest run` failed with a worker start-up timeout and the next took
+  33 s; warm runs take ~2 s with either pool, so it was a one-off cold start (likely antivirus
+  scanning new files). Kept Vitest's default pool rather than changing config for it.
+- **Verified by:** smoke tests pass (list rendered from the fake API with exactly one request;
+  unknown route → 404 page); lint and strict build (tests type-checked too).

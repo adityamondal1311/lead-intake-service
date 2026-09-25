@@ -15,12 +15,21 @@ export function shouldRetry(failureCount: number, error: unknown): boolean {
   return false
 }
 
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      // Lead data changes when webhooks arrive, so treat it as fresh for a short while only.
-      staleTime: 15_000,
-      retry: shouldRetry,
+/**
+ * The app's query client. Tests build their own per test with the same retry policy but
+ * `retryDelay: 0`, so retry behaviour is tested without waiting out the real back-off.
+ */
+export function createQueryClient(options: { retryDelay?: number } = {}): QueryClient {
+  return new QueryClient({
+    defaultOptions: {
+      queries: {
+        // Lead data changes when webhooks arrive, so treat it as fresh for a short while only.
+        staleTime: 15_000,
+        retry: shouldRetry,
+        ...(options.retryDelay !== undefined && { retryDelay: options.retryDelay }),
+      },
     },
-  },
-})
+  })
+}
+
+export const queryClient = createQueryClient()

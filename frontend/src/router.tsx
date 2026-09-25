@@ -1,4 +1,4 @@
-import { createBrowserRouter } from 'react-router'
+import { createBrowserRouter, type RouteObject } from 'react-router'
 
 import AppLayout from './components/AppLayout'
 import LeadDetailPage from './pages/LeadDetailPage'
@@ -6,7 +6,8 @@ import LeadListPage from './pages/LeadListPage'
 import NotFoundPage from './pages/NotFoundPage'
 import RouteErrorPage from './pages/RouteErrorPage'
 
-export const router = createBrowserRouter([
+// Exported so tests render the real route table (in a memory router) rather than a copy.
+export const routes: RouteObject[] = [
   {
     element: <AppLayout />,
     errorElement: <RouteErrorPage />,
@@ -16,4 +17,6 @@ export const router = createBrowserRouter([
       { path: '*', element: <NotFoundPage /> },
     ],
   },
-])
+]
+
+export const router = createBrowserRouter(routes)

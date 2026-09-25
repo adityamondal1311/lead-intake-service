@@ -557,9 +557,10 @@ cd backend
 uv run ruff check . && uv run ruff format --check .
 uv run pytest
 
-# Frontend
+# Frontend (no backend needed: the API is faked)
 cd frontend
-npm run lint && npm run build
+npm run lint && npm run test && npm run build
+npm run test:watch                        # re-run on save
 ```
 
 Integration tests run against **real PostgreSQL**, not SQLite: the schema is built by running the
@@ -577,6 +578,14 @@ two properties the status update exists for: **atomicity** (a real database fail
 activity insert rolls back the status change) and **concurrency** (four simultaneous changes to
 one lead, repeated 5×, must yield one unbroken `from → to` chain shown in the right order). Both
 tests were confirmed to fail when the row lock or the timestamp fix is removed.
+
+**Frontend tests** (Vitest + Testing Library + MSW) render the real app (real routes, pages,
+hooks and API client) in jsdom and drive it like a user. The API is faked at the **network
+boundary** with MSW rather than by mocking the API client, so request building, the error
+envelope → `ApiError` mapping, the retry policy and request cancellation all stay under test.
+The fake is **stateful** (`src/test/fakeApi.ts`): a `PATCH` changes what later `GET`s return, so
+flows like "change the status, go back, see it in the list" are tested rather than scripted. Any
+request the fake does not handle fails the test, and every test gets a fresh query client.
 
 ## Observability
 
@@ -628,4 +637,8 @@ protection they guard is removed.
 - [x] Phase 9: lead detail (contact, campaign, reference ids, back to the same list view,
       not-found), activity timeline (typed, readable diffs, safe fallback), server-authoritative
       status updates with immediate cache update and background refresh
-- [ ] Phase 10+: frontend tests, Docker, deployment
+- [ ] Phase 10: frontend tests
+  - [x] Vitest + Testing Library + MSW harness: stateful fake API, real routes, CI step
+  - [ ] Lead list tests (unit + flows)
+  - [ ] Lead detail and status update tests
+- [ ] Phase 11+: Docker, deployment

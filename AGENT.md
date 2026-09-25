@@ -215,8 +215,11 @@ against real PostgreSQL.
 - **No browser end-to-end tests.** Frontend flows are tested in jsdom against a stateful MSW fake
   of the API; the backend is tested against real PostgreSQL. A Playwright suite against the
   deployed stack is the next step.
-- **Migrations will run at container start** (Docker phase), fine for a single instance; at scale
-  they belong in a separate release step.
+- **Local Docker migrates at container start** (single instance). On Railway migrations are a
+  release step instead (`RUN_MIGRATIONS_ON_START=false` + pre-deploy `alembic upgrade head`).
+- **Public, unauthenticated live dashboard.** The deployed dashboard and its API have no login, so
+  anyone with the URL can change lead statuses. The deployment holds only synthetic demo data;
+  real use would put API authentication/authorization or SSO in front of the dashboard API (D9).
 
 ## AI Contribution Log
 
@@ -829,3 +832,37 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   stdlib-only test sender, as CI does with the runner's `python3`); seed inside the container and
   26 leads served; backend uid 10001 and frontend uid 101. Then pushed and confirmed green in
   GitHub Actions.
+
+### Phase 12: Railway deployment configuration
+- **AI generated:** `.railway/railway.ts` (Postgres, backend and frontend services from this repo's
+  `backend/` and `frontend/` Dockerfiles; Wait for CI; watch paths; backend pre-deploy migration;
+  healthchecks; restart policy; variables with Railway references and `preserve()` for secrets),
+  its pinned `railway@3.11.0` SDK in `.railway/package.json`, the entrypoint's
+  `RUN_MIGRATIONS_ON_START` toggle and command pass-through, a CI step for the release-step path,
+  and the README "Deployment" section.
+- **Human decided:** Railway Infrastructure as Code instead of `railway.json` (Railway has
+  deprecated config-as-code, new services cannot opt in, and it stops being read on 2026-12-01);
+  the hybrid workflow (the account, GitHub connection and CLI login are done by the account owner;
+  the rest from the CLI); Postgres private only; Wait for CI on; synthetic seed data on production;
+  no authentication added in this phase (documented limitation).
+- **Why production differs from local Docker:** local Docker runs migrations at container start
+  because it is a single instance. Railway runs them as a pre-deploy/release step so schema
+  changes happen once per deployment rather than once per application instance;
+  `RUN_MIGRATIONS_ON_START` is therefore `true` locally and `false` on Railway. This keeps schema
+  migration out of replica start-up and gives a failure boundary before traffic moves to the new
+  version.
+- **Checked against the source, not assumed:** the deprecation and the IaC mechanism in Railway's
+  docs; field names in the SDK's type definitions (downloaded to a scratch folder to read before
+  installing anything): `checkSuites` is Wait for CI, `rootDirectory`, `watchPatterns`,
+  `preDeployCommand`, `healthcheckPath`, `restartPolicyType`, `preserve()`; that the npm packages
+  `railway` and `@railway/cli` are published from the `railwayapp` GitHub org by Railway's
+  maintainers; that a Dockerfile at a service's root directory is used automatically and that
+  service variables reach a Docker build only through a declared `ARG` (so the backend's secrets
+  cannot enter its build; the frontend's API URL can). The SDK README labels IaC "experimental";
+  the package is pinned exactly.
+- **Not yet verifiable locally:** how Railway invokes the pre-deploy command with our
+  `ENTRYPOINT`. The entrypoint handles both possibilities (the command replaces the entrypoint, or
+  is passed to it as arguments); the real deploy logs will show which.
+- **Verified by:** `railway.ts` type-checks against the pinned SDK; entrypoint modes in Docker:
+  default (migrate, then serve), `false` + command (skip, run the command, exit 0), `false` alone
+  (serve without migrating), invalid value (exit 1); the new CI step run locally.

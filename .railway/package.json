@@ -1,0 +1,9 @@
+{
+  "name": "lead-intake-railway-iac",
+  "private": true,
+  "description": "Railway Infrastructure as Code for this repository (evaluated by the Railway CLI).",
+  "type": "module",
+  "devDependencies": {
+    "railway": "3.11.0"
+  }
+}

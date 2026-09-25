@@ -41,6 +41,7 @@ frontend/src/
   lib/            query client (retry policy), constants, Intl date formatting
 docker-compose.yml  the whole stack: PostgreSQL, backend, frontend
 .github/          CI workflow
+.railway/         Railway Infrastructure as Code (railway.ts)
 AGENT.md          AI usage, architecture decisions, contribution log
 ```
 
@@ -562,12 +563,62 @@ run of the system with a genuine audit trail.
 - **Trade-off:** because nothing is backdated, `createdAt` is the time the seed ran; the
   lead's Meta submission time (`metaCreatedAt`) is spread over the preceding week.
 
+## Deployment (Railway)
+
+```
+                    Browser
+        ┌──────────────┴──────────────┐
+        ▼ HTTPS                       ▼ HTTPS (fetch, CORS)
+  ┌────────────┐               ┌────────────┐   private network   ┌────────────┐
+  │  frontend  │               │  backend   │ ──────────────────▶ │  Postgres  │
+  │  nginx     │               │  FastAPI   │                     │  (managed) │
+  └────────────┘               └────────────┘ ◀── Meta webhook    └────────────┘
+```
+
+One Railway project, three services: **Postgres** (managed, private network only: no public
+domain, no TCP proxy), **backend** and **frontend**, each built from **the same Dockerfile the CI
+`docker` job builds and smoke-tests**. Only the frontend and backend get public HTTPS domains.
+
+The infrastructure is declared in [`.railway/railway.ts`](.railway/railway.ts) (Railway
+Infrastructure as Code; the older `railway.json` config-as-code is deprecated and stops being
+read on 2026-12-01). It is applied with the Railway CLI, not on push:
+
+```bash
+cd .railway && npm install          # the pinned `railway` IaC SDK
+railway login && railway link       # once, interactively
+railway config plan                 # review the diff against the live environment
+railway config apply                # apply it
+```
+
+| Setting | Why |
+|---|---|
+| Deploy on push to `main` with **Wait for CI** (`checkSuites`) | nothing deploys unless the backend, frontend and Docker CI jobs pass |
+| **Watch paths** `/backend/**`, `/frontend/**` | a frontend-only change does not redeploy the backend, and vice versa |
+| Backend **pre-deploy** `alembic upgrade head` | migrations run once per deploy, in the new image, before it takes traffic; a failed migration fails the deploy and the previous version keeps serving |
+| `RUN_MIGRATIONS_ON_START=false` (backend) | replicas never race to migrate; locally it stays `true` so `docker compose up` is still one command |
+| Healthchecks: backend `/health` (checks PostgreSQL), frontend `/` | traffic moves to a new version only once it is actually healthy |
+| `ENVIRONMENT=production` | the app refuses to start without real `META_APP_SECRET` / `META_VERIFY_TOKEN` |
+| `DATABASE_URL=${{Postgres.DATABASE_URL}}` | private-network URL; the app normalizes `postgresql://` to the psycopg driver |
+| `CORS_ORIGINS=["https://${{frontend.RAILWAY_PUBLIC_DOMAIN}}"]` | only the deployed dashboard may call the API from a browser |
+| `VITE_API_BASE_URL=https://${{backend.RAILWAY_PUBLIC_DOMAIN}}` (frontend) | passed to the Docker build (the Dockerfile declares the `ARG`) and compiled into the bundle |
+
+Secrets are **not** in the repository: `META_APP_SECRET` and `META_VERIFY_TOKEN` are generated
+locally, set in Railway directly, and marked `preserve()` in the IaC file so applying it never
+overwrites them. Railway injects `PORT`; both images listen on it.
+
+**Local vs production migrations, deliberately different.** Local Docker migrates at container
+start because it is a single instance. On Railway, migrations are a release step so schema changes
+happen once per deploy rather than once per replica, and a failed migration stops the deploy before
+traffic moves. The entrypoint supports both: `RUN_MIGRATIONS_ON_START` toggles the start-up
+migration, and a command passed to the container (the release step) runs instead of the server.
+
 ## Environment variables (backend)
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `ENVIRONMENT` | `local` | Exactly `local`, `test` or `production`. Anything else (e.g. `prod`) stops startup, so a typo can never skip the production checks |
 | `LOG_LEVEL` | `INFO` | Exactly `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` |
+| `RUN_MIGRATIONS_ON_START` | `true` | Container entrypoint only: `true` migrates before starting the API; `false` leaves it to a release step (Railway). Anything else stops the container |
 | `CORS_ORIGINS` | `["http://localhost:5173"]` | JSON list of exact origins (`scheme://host[:port]`, no path or trailing slash); see [CORS](#cors) |
 | `DATABASE_URL` | local compose DB | `postgres://` and `postgresql://` are accepted and rewritten to the psycopg 3 driver (Railway supplies the former) |
 | `TEST_DATABASE_URL` | local `lead_intake_test` | Used only by pytest |
@@ -726,4 +777,7 @@ protection they guard is removed.
 - [x] Phase 11: Docker: pinned multi-stage backend and frontend images (non-root, migrations at
       start, graceful shutdown, nginx SPA serving with security headers), one-command compose,
       CI job that builds and smoke-tests the whole stack
-- [ ] Phase 12+: Railway deployment, final documentation
+- [ ] Phase 12: Railway deployment
+  - [x] Infrastructure as Code (`.railway/railway.ts`), release-step migrations, entrypoint toggle
+  - [ ] Live deployment and verification
+- [ ] Phase 13: final documentation

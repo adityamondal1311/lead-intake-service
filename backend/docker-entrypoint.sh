@@ -1,13 +1,42 @@
 #!/bin/sh
-# Container entrypoint: apply migrations, then hand the process over to uvicorn.
+# Container entrypoint.
 #
-# `set -e`: if the migration fails, the script (and so the container) exits non-zero and the API
-# never starts against a schema it does not expect. Migrations are idempotent, so a restart just
-# finds the database already at "head".
+#   docker run <image>                 → (migrations) then the API server
+#   docker run <image> <command...>    → (migrations) then <command> instead of the server,
+#                                        e.g. `alembic upgrade head` as a release step
+#
+# RUN_MIGRATIONS_ON_START (default true) decides whether migrations run here:
+#   true  — local Docker / compose: one instance, so migrating at start is simplest.
+#   false — Railway: migrations run once per deploy as the pre-deploy (release) step instead,
+#           so application replicas never race to migrate.
+#
+# `set -e`: a failed migration exits non-zero, so the API never starts against a schema it does
+# not expect (and on Railway a failed pre-deploy stops the deploy).
 set -eu
 
-echo '{"level": "INFO", "logger": "entrypoint", "message": "applying database migrations"}'
-alembic upgrade head
+log() {
+  echo "{\"level\": \"INFO\", \"logger\": \"entrypoint\", \"message\": \"$1\"}"
+}
+
+case "${RUN_MIGRATIONS_ON_START:-true}" in
+  true)
+    log "applying database migrations"
+    alembic upgrade head
+    ;;
+  false)
+    log "skipping migrations at start (RUN_MIGRATIONS_ON_START=false)"
+    ;;
+  *)
+    # Same rule as the app's settings: an unrecognised value is an error, not a guess.
+    echo "RUN_MIGRATIONS_ON_START must be true or false" >&2
+    exit 1
+    ;;
+esac
+
+# A command was given: run it in place of the server.
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
 
 # `exec` replaces this shell with uvicorn, so uvicorn is PID 1 and receives the container's
 # SIGTERM directly: a graceful shutdown instead of being killed when the stop timeout expires.

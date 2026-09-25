@@ -69,6 +69,10 @@ jobs:
         run: |
           docker compose exec -T backend alembic current | grep -q '(head)'
           curl -fsS "http://localhost:8000/leads?limit=1" | grep -q '"pagination"'
+      - name: Release-step path (as on Railway) runs the given command instead of the server
+        run: |
+          docker compose run --rm --no-deps -e RUN_MIGRATIONS_ON_START=false backend alembic upgrade head
+          docker compose run --rm --no-deps -e RUN_MIGRATIONS_ON_START=false backend alembic current | grep -q '(head)'
       - name: Frontend serves the app, deep links included, with its security headers
         run: |
           curl -fsS http://localhost:3000/ | grep -q '<div id="root">'

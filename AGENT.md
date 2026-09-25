@@ -715,3 +715,18 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   scanning new files). Kept Vitest's default pool rather than changing config for it.
 - **Verified by:** smoke tests pass (list rendered from the fake API with exactly one request;
   unknown route → 404 page); lint and strict build (tests type-checked too).
+
+### Phase 10: Lead list tests
+- **AI generated:** unit tests for `listParams`, `pageItems`, `formatRelative`, the retry policy
+  and `apiFetch`; `LeadListPage.test.tsx` with 12 user flows (states, errors and retry, debounced
+  search, status filter, pagination and history, "Updating…", URL clean-up, out-of-range page,
+  back navigation from a lead).
+- **Human decided:** real timers (the test waits out the real 300 ms debounce, closer to the
+  browser than fake timers); assert what the user and the network see (rows, text, URL, requests
+  sent), not hook internals; flow assertions look inside the `<table>` because jsdom applies no CSS
+  and the phone cards are also in the DOM.
+- **Verified the tests can fail:** debounce set to 0 ms → the one-request search test and the
+  history test fail (every keystroke became a request and a history change); 5xx no longer
+  retried → the retry unit tests and the error flow test fail. Restored; all pass.
+- **Verified by:** 56 frontend tests, three consecutive full runs green (~7 s each, no flakiness
+  from real timers); lint and strict build.

@@ -587,6 +587,20 @@ The fake is **stateful** (`src/test/fakeApi.ts`): a `PATCH` changes what later `
 flows like "change the status, go back, see it in the list" are tested rather than scripted. Any
 request the fake does not handle fails the test, and every test gets a fresh query client.
 
+- **Unit:** URL parameter rules and canonical URLs, pagination page items, relative times with a
+  fixed clock, the retry policy (network/5xx retried at most twice; 400/401/404/422 never), and
+  the API client (error envelope → `ApiError`, `NETWORK_ERROR`, non-envelope errors, empty query
+  values omitted, cancelled requests not reported as errors).
+- **Lead list flows:** skeleton → rows (newest first, status as text); "No leads yet" vs "No leads
+  match" with Clear filters; a 5xx retried twice then shown with its request id, and Try again
+  recovering; unreachable server; search typed as "kumar" sending **one** request after the
+  debounce and resetting to page 1; status filter in the URL; pagination links with Back returning
+  to the previous page while typing adds no history; previous rows staying visible ("Updating…")
+  while the next page loads; hand-edited URLs cleaned up; a page past the end corrected; Back to
+  leads returning to the same filtered view.
+- **Confirmed to fail when the protection is removed:** a 0 ms debounce fails the one-request and
+  history tests; never retrying 5xx fails the retry unit tests and the error flow test.
+
 ## Observability
 
 - Logs are one JSON object per line on stdout (easy to filter in Railway or any log pipeline).
@@ -639,6 +653,6 @@ protection they guard is removed.
       status updates with immediate cache update and background refresh
 - [ ] Phase 10: frontend tests
   - [x] Vitest + Testing Library + MSW harness: stateful fake API, real routes, CI step
-  - [ ] Lead list tests (unit + flows)
+  - [x] Lead list tests (unit + flows)
   - [ ] Lead detail and status update tests
 - [ ] Phase 11+: Docker, deployment

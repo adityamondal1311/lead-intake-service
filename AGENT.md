@@ -227,3 +227,17 @@ Condensed, in order.
   `alembic check` reports no drift between models and migration; `downgrade base` → `upgrade head`
   round trip; a throwaway ORM script (rolled back) confirming defaults are populated after INSERT
   via `RETURNING`; ruff and the existing test suite.
+
+### Phase 3: Data model constraint tests and docs
+- **AI generated:** `tests/integration/test_models.py` (21 tests): defaults (ORM and raw SQL),
+  duplicate `external_id` and duplicate `(source, external_event_id)` rejected, same event id from
+  another source allowed, every enum value accepted and unknown values rejected by each CHECK,
+  FK rejection, delete rules (CASCADE / SET NULL), `alembic check` for model/migration drift, and a
+  downgrade → upgrade round trip; `db_session` and `alembic_config` fixtures; README data model
+  section with an ER diagram and an index-to-query table.
+- **Human decided:** test the constraints at the database level (not just ORM behaviour), because
+  the webhook's correctness under concurrency relies on them; assert on constraint **names** so each
+  test proves the specific constraint fired, not just that some error occurred.
+- **Caught and corrected during review:** `import app.models` followed by `from app.main import app`
+  rebound the name `app` in the test conftest; switched to `from app import models`.
+- **Verified by:** 31 tests passing against Docker Postgres; ruff lint and format clean; CI.

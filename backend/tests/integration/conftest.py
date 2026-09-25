@@ -5,20 +5,26 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
+from app import models  # noqa: F401  (registers every table, so clean_tables truncates all of them)
 from app.core.config import get_settings
 from app.db.base import Base
-from app.db.session import engine
+from app.db.session import SessionLocal, engine
 from app.main import app
+
+
+def _alembic_config() -> Config:
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", get_settings().database_url)
+    return config
 
 
 @pytest.fixture(scope="session", autouse=True)
 def migrated_database() -> None:
     """Build the schema with the real migrations (not create_all), so every test run also
     proves the migrations apply cleanly."""
-    config = Config("alembic.ini")
-    config.set_main_option("sqlalchemy.url", get_settings().database_url)
-    command.upgrade(config, "head")
+    command.upgrade(_alembic_config(), "head")
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +35,17 @@ def clean_tables() -> Iterator[None]:
     if tables:
         with engine.begin() as connection:
             connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+
+
+@pytest.fixture
+def alembic_config() -> Config:
+    return _alembic_config()
+
+
+@pytest.fixture
+def db_session() -> Iterator[Session]:
+    with SessionLocal() as session:
+        yield session
 
 
 @pytest.fixture

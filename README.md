@@ -37,6 +37,79 @@ docker-compose.yml  local PostgreSQL
 AGENT.md          AI usage, architecture decisions, contribution log
 ```
 
+## Data model
+
+```mermaid
+erDiagram
+    leads ||--o{ activities : "has (ON DELETE CASCADE)"
+    leads |o--o{ webhook_events : "created/updated by (ON DELETE SET NULL)"
+    leads {
+        uuid id PK
+        varchar external_id UK "Meta lead_id"
+        varchar full_name
+        varchar email "nullable"
+        varchar phone "nullable, string"
+        varchar source "default META_ADS"
+        varchar campaign_id "form_id, ad_id too"
+        varchar status "CHECK, default NEW"
+        timestamptz meta_created_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    activities {
+        uuid id PK
+        uuid lead_id FK
+        varchar type "CHECK"
+        varchar actor
+        jsonb details "default empty object"
+        timestamptz created_at
+    }
+    webhook_events {
+        uuid id PK
+        varchar source "UNIQUE with external_event_id"
+        varchar external_event_id "Meta event_id"
+        jsonb payload "raw body"
+        uuid lead_id FK "nullable"
+        varchar outcome "CHECK, NULL until processed"
+        timestamptz received_at
+        timestamptz processed_at
+    }
+```
+
+- **`leads`**: one row per Meta lead. `external_id` (Meta's `lead_id`) is `UNIQUE`: it is the
+  lead's identity, so the same lead can never be stored twice.
+- **`activities`**: the audit trail (`LEAD_CREATED`, `LEAD_UPDATED`, `STATUS_CHANGED`), append-only:
+  no code path updates or deletes an activity. `details` holds type-specific JSON (status
+  from/to, field-level diff, webhook event ids); `actor` records who caused it.
+- **`webhook_events`**: one row per accepted delivery. `UNIQUE (source, external_event_id)` is the
+  idempotency guard: a redelivered event cannot be inserted twice, even when two deliveries race.
+  The raw payload is kept for audit/replay and is never returned by the API or logged.
+
+**Enums as VARCHAR + CHECK**, not native Postgres `ENUM`: adding a value to a native enum needs
+special migration handling; a CHECK is a plain drop-and-recreate. The CHECK SQL is generated from
+the Python `StrEnum`s, so code and database cannot drift.
+
+**Delete rules:** deleting a lead (e.g. an erasure request) cascades to its activities, which mean
+nothing without it, but only nulls `webhook_events.lead_id`, so the fact that a delivery was received
+survives.
+
+**Indexes**, each tied to a query:
+
+| Index | Serves |
+|---|---|
+| `ix_leads_status_created_at (status, created_at DESC)` | Lead list filtered by status, newest first |
+| `ix_leads_created_at (created_at DESC)` | Unfiltered lead list, newest first |
+| `ix_activities_lead_id_created_at (lead_id, created_at DESC)` | Activity timeline of one lead (also covers the FK, which Postgres does not index automatically) |
+| `uq_leads_external_id` | Webhook lookup of an existing lead by Meta `lead_id` |
+| `uq_webhook_events_source_external_event_id` | Duplicate-delivery detection |
+
+Deliberately not indexed yet: `webhook_events.lead_id` (no query reads deliveries by lead) and the
+lead search columns. Search uses `ILIKE` on name/email/phone, fine at this scale; a `pg_trgm` GIN
+index is the scaling path.
+
+Constraint and index names follow a naming convention set on the SQLAlchemy `MetaData`, so
+migrations can reference them predictably.
+
 ## Local development
 
 ### Prerequisites
@@ -108,6 +181,12 @@ Integration tests run against **real PostgreSQL**, not SQLite: the schema is bui
 Alembic migrations once per test session (so every run also proves the migrations apply), and every
 table is truncated after each test. CI does the same with a Postgres 17 service container.
 
+The data model tests prove the guarantees live in the database itself (so they hold under races
+and for writes that bypass the ORM): uniqueness of lead identity and of webhook deliveries, CHECK
+constraints for every enum (each enum value accepted, unknown values rejected), foreign keys and
+delete rules, database-side defaults, models/migrations staying in sync (`alembic check`), and a
+full downgrade/upgrade round trip.
+
 ## Observability
 
 - Logs are one JSON object per line on stdout (easy to filter in Railway or any log pipeline).
@@ -123,7 +202,6 @@ table is truncated after each test. CI does the same with a Postgres 17 service 
 - [x] Phase 1: backend and frontend skeletons, CI
 - [x] Phase 2: PostgreSQL via Docker Compose, SQLAlchemy, Alembic, DB-aware health check, JSON
       logging, request IDs, tests against real Postgres in CI
-- [ ] Phase 3: data model
-  - [x] `leads`, `activities`, `webhook_events` models and first migration (constraints, indexes)
-  - [ ] Constraint tests, data model documentation
+- [x] Phase 3: `leads`, `activities`, `webhook_events` models, first migration (constraints,
+      indexes), database-level constraint tests
 - [ ] Phase 4+: lead APIs, webhook, frontend, tests, Docker, deployment

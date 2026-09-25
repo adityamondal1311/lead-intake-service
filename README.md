@@ -426,6 +426,18 @@ being sent to the API.
   clickable through it); labelled search and status inputs; visible focus rings; the result count
   is announced via a live region; status is shown as text, colour only supplements it.
 
+**Lead detail (`/leads/:id`).** Name, status and creation time; contact details (`mailto:` /
+`tel:` links), campaign / form / ad and the time the lead was submitted on Meta; reference ids
+(Meta lead id, lead id) in small muted monospace, selectable, full value on hover.
+
+- **Back to leads** returns to the exact list view the user came from (search, status, page): the
+  list passes its query string as router state when a lead is opened. Opened directly, it goes to
+  `/`. This is navigation state only; the API never sees it.
+- **Not found:** an unknown id (404) and a malformed one (422) both show "Lead not found"; to the
+  user there is simply no lead at that address. Neither is retried (the retry policy only retries
+  network errors and 5xx). Other errors show the reason, request id and **Try again**.
+- The browser tab title follows the page ("Rohan Mehta · Lead Intake", "Lead not found · …").
+
 ### 4. Demo data (optional)
 
 ```bash
@@ -565,5 +577,8 @@ protection they guard is removed.
       complete** (see [Backend checkpoint](#backend-checkpoint))
 - [x] Phase 8: frontend lead list: app shell, typed API client, URL-driven search / status
       filter / pagination, loading / empty / error states, responsive table + cards
-- [ ] Phase 9: lead detail, status update and activity timeline (lead links show 404 until then)
+- [ ] Phase 9: lead detail, status update and activity timeline
+  - [x] Lead detail page (contact, campaign, reference ids, back to the same list view, not-found)
+  - [ ] Activity timeline
+  - [ ] Status updates with live timeline refresh
 - [ ] Phase 10+: frontend tests, Docker, deployment

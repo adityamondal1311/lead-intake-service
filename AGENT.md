@@ -636,3 +636,19 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   page 2 of 2), `?status=FOO&page=abc&junk=1` (normalized), no-match state, 375 px cards and
   phone pagination, identical column positions on pages 1 and 2. Interactive checks (typing,
   Back, Retry, keyboard) handed to a manual checklist.
+
+### Phase 9: Lead detail page
+- **AI generated:** `LeadDetail`/`Activity` types, `getLead`, `useLead` and `isLeadNotFound`,
+  the `leads/:leadId` route, `LeadDetailPage` (header, back link, loading / not-found / error
+  states), `LeadDetailsCard` (contact, campaign, reference ids), the detail skeleton and
+  `useDocumentTitle` (tab titles on every page).
+- **Human decided:** a malformed id (422) is "Lead not found", like an unknown one (404), with no
+  retries; reference ids shown small, muted and monospace; the back link restores the list view
+  from router state, never from the API; timeline order is whatever the API returns (no
+  client-side re-sorting).
+- **Reviewed specifically:** no new retry mechanism was needed: the Phase 8 policy already
+  retries only network errors and 5xx, so 404/422 fail fast. The backend log showed two requests
+  per not-found id, 2–4 ms apart; that is React StrictMode's development double mount (the first
+  request is cancelled through the `AbortSignal`), not a retry, which would follow ~1 s later.
+- **Verified by:** lint and strict build; screenshots of a seeded lead with a history (desktop and
+  375 px, long id truncated), an unknown UUID and `/leads/hello` (both "Lead not found").

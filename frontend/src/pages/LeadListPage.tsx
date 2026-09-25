@@ -9,6 +9,7 @@ import LeadListSkeleton from '../components/LeadListSkeleton'
 import LeadTable from '../components/LeadTable'
 import Pagination from '../components/Pagination'
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useLeads } from '../hooks/useLeads'
 import { useNow } from '../hooks/useNow'
 import { PAGE_SIZE, STATUS_LABELS } from '../lib/constants'
@@ -70,6 +71,7 @@ export default function LeadListPage() {
     search: filters.search || undefined,
   })
   const now = useNow()
+  useDocumentTitle('Leads')
 
   // A page past the end (stale link, or filters shrank the result) → the last real page. Only
   // decided on real data for the current query, never on the previous page's placeholder.

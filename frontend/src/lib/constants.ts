@@ -26,4 +26,10 @@ export const STATUS_DOT_CLASSES: Record<LeadStatus, string> = {
   LOST: 'bg-zinc-400',
 }
 
+const SOURCE_LABELS: Record<string, string> = { META_ADS: 'Meta Ads' }
+
+export function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source] ?? source
+}
+
 export const PAGE_SIZE = 20

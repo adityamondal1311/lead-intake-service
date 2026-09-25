@@ -19,6 +19,29 @@ export interface LeadSummary {
   createdAt: string
 }
 
+/** GET /leads/{id}: everything in the summary plus identifiers and Meta metadata. */
+export interface LeadDetail extends LeadSummary {
+  externalId: string
+  formId: string | null
+  adId: string | null
+  metaCreatedAt: string | null
+  updatedAt: string
+}
+
+/** One audit trail entry. `details` depends on `type` (typed in the activity timeline). */
+export interface Activity {
+  id: string
+  type: string
+  actor: string
+  details: unknown
+  createdAt: string
+}
+
+export interface LeadDetailResponse {
+  lead: LeadDetail
+  activities: Activity[] // newest first, as returned by the API
+}
+
 export interface Pagination {
   page: number
   limit: number

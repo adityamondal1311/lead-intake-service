@@ -366,3 +366,29 @@ against real PostgreSQL.
   rejected; handshake echoes the challenge as `text/plain` and returns 403 for wrong token, wrong
   mode, missing challenge or no params; production startup refused without secrets; ruff and the
   existing 62 tests.
+
+### Phase 5: Webhook payload validation and lead ingestion
+- **AI generated:** `MetaLeadPayload` (required ids and name, email or phone required, trimming,
+  lowercased email, blank → null, timezone-aware `created_time`, unknown fields ignored);
+  `POST /webhook/meta-lead` with an async dependency that reads the raw body (64 KiB cap) and
+  verifies the signature before parsing; `webhook_service.process_meta_lead` (one transaction:
+  delivery row → lead → `LEAD_CREATED` activity → delivery marked `CREATED`); `WebhookAck`
+  response; OpenAPI request-body schema for the raw-body route.
+- **Human decided:** Phase 5 handles new leads only; a redelivery or a new event for an existing
+  lead fails on the unique constraints (500, no duplicate data) until Phase 6 adds idempotency
+  (controlled incompleteness, agreed up front); the raw payload is stored unmodified for audit;
+  logs carry `event_id`, outcome and lead id, never lead data.
+- **Caught and corrected during review:**
+  - SQLAlchemy includes bound parameters in exception messages, so the 500 traceback of a failed
+    webhook INSERT would have logged the lead's name, email and the raw payload. Set
+    `hide_parameters=True` on the engine; a probe showed the same error message with PII
+    before and without it after.
+  - The first draft documented the request body with a `$ref` to a schema component FastAPI never
+    generates (the route reads raw bytes), which would have left `/docs` with a broken
+    reference. The schema is now inlined.
+- **Verified by:** running the server and sending signed deliveries with the test sender
+  (independent stdlib HMAC): 200 `CREATED` with lead, activity and delivery rows linked, name
+  trimmed and email lowercased while the raw payload is kept verbatim; bad and missing signatures
+  → 401 with nothing stored; redelivery → 500 with the database still holding exactly one of
+  each row; zero occurrences of the name, email or phone in the server log; Meta-style
+  `+0000` timestamps parse; ruff and the existing 62 tests.

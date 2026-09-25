@@ -7,10 +7,14 @@ from app.core.config import get_settings
 # connection dropped by the host does not surface as a failed request. connect_timeout bounds
 # how long a request (including /health) can hang when the database is unreachable; psycopg's
 # default is to wait indefinitely.
+#
+# hide_parameters keeps bound values out of SQLAlchemy exception messages. Without it, a failed
+# INSERT logs its parameters (lead name, email, phone, the raw webhook payload) with the traceback.
 engine = create_engine(
     get_settings().database_url,
     pool_pre_ping=True,
     connect_args={"connect_timeout": 5},
+    hide_parameters=True,
 )
 
 # expire_on_commit=False keeps loaded objects readable after commit, so services can commit

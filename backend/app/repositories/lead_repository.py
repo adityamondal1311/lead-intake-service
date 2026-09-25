@@ -56,6 +56,11 @@ def get_by_id(session: Session, lead_id: uuid.UUID) -> Lead | None:
     return session.get(Lead, lead_id)
 
 
+def add(session: Session, lead: Lead) -> Lead:
+    session.add(lead)
+    return lead
+
+
 def get_by_id_for_update(session: Session, lead_id: uuid.UUID) -> Lead | None:
     """Load a lead and lock its row (SELECT ... FOR UPDATE) until the transaction ends.
 

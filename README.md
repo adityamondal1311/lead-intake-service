@@ -298,6 +298,7 @@ tests were confirmed to fail when the row lock or the timestamp fix is removed.
       row-locked status updates, JSON error envelope, API integration tests
 - [ ] Phase 5: Meta webhook
   - [x] Signature verification (HMAC-SHA256), subscription handshake, production secret check
-  - [ ] Payload validation and transactional lead ingestion
+  - [x] Payload validation and transactional lead ingestion (new leads; redelivery and
+        existing-lead events are rejected by DB constraints until Phase 6 adds idempotency)
   - [ ] Tests, test sender script, webhook documentation
 - [ ] Phase 6+: webhook idempotency, frontend, Docker, deployment

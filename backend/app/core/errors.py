@@ -51,6 +51,14 @@ class ForbiddenError(AppError):
     code = "FORBIDDEN"
 
 
+class PayloadTooLargeError(AppError):
+    status_code = status.HTTP_413_CONTENT_TOO_LARGE
+    code = "PAYLOAD_TOO_LARGE"
+
+    def __init__(self, max_bytes: int) -> None:
+        super().__init__(f"Request body exceeds {max_bytes} bytes")
+
+
 def error_response(
     status_code: int,
     code: str,

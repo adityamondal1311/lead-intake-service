@@ -393,6 +393,32 @@ Every value is validated at startup: an invalid one stops the app with an error 
 variable, rather than letting it run misconfigured. Only `.env.example` is committed; `.env` is
 gitignored.
 
+## CORS
+
+The dashboard is served from a different origin than the API, so the browser enforces CORS.
+The API allows exactly what the dashboard uses:
+
+- **Origins:** the `CORS_ORIGINS` list, matched exactly (no wildcards).
+- **Methods:** `GET`, `PATCH` (the `PATCH` preflight is answered by the CORS middleware).
+- **Request headers:** `Content-Type`, `X-Request-ID`.
+- **Exposed response header:** `X-Request-ID`, so the dashboard can show it with an error.
+- **Error responses carry CORS headers too** (404, 422, 500): otherwise the browser hides the
+  error body and the dashboard could not show the message or request id.
+
+The webhook is called server-to-server by Meta; CORS does not apply to it.
+
+`CORS_ORIGINS` is a **JSON list** of exact origins: `scheme://host[:port]`, no path, no trailing
+slash (browsers send the `Origin` header without one, so `https://app.example.com/` would never
+match; the app refuses to start with such a value).
+
+```bash
+# Railway variable (value field, exactly as shown)
+CORS_ORIGINS=["https://your-frontend.up.railway.app"]
+
+# In a shell, single-quote it so the shell keeps the double quotes
+export CORS_ORIGINS='["https://your-frontend.up.railway.app", "http://localhost:5173"]'
+```
+
 ## Running tests and checks
 
 ```bash

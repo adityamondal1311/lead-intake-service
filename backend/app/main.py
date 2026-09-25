@@ -2,15 +2,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import health, leads, webhook
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import REQUEST_ID_HEADER, request_context_middleware
 
 
-# App factory: tests can build an app with overridden settings without touching globals.
-def create_app() -> FastAPI:
-    settings = get_settings()
+# App factory: tests can build an app with explicit settings without touching globals.
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
     configure_logging(settings.log_level)
 
     app = FastAPI(title=settings.app_name, version="0.1.0")
@@ -20,8 +20,10 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        # Only what the dashboard uses. The webhook is called server-to-server; CORS does not
+        # apply to it.
+        allow_methods=["GET", "PATCH"],
+        allow_headers=["Content-Type", REQUEST_ID_HEADER],
         # Lets the browser app read the request id, e.g. to show it in an error message.
         expose_headers=[REQUEST_ID_HEADER],
     )

@@ -499,3 +499,24 @@ services, focused OpenAPI examples, and the final backend checkpoint.
 - **Verified by:** 29 new configuration tests; starting the app with `ENVIRONMENT=prod`,
   `ENVIRONMENT=""`, `LOG_LEVEL=info` and a trailing-slash origin each fails with a message naming
   the variable; `.env.example` loads through the app's dotenv parser; 160 tests pass.
+
+### Phase 7: PII-in-logs and CORS verification
+- **AI generated:** `test_log_privacy.py` (distinctive name/email/phone sent through seven paths:
+  success, duplicate, update, validation error, rejected signature, search by email and phone,
+  and a database failure with traceback; every server log line captured through the production
+  JSON formatter at DEBUG and searched for those exact values); `test_cors.py` (allowed origin,
+  other origin, `PATCH` preflight, refused preflights, CORS headers and readable `X-Request-ID`
+  on 404/500); README CORS section.
+- **Human decided:** assert on the actual sensitive values, not on words like "email"; the test
+  first asserts that each path really logged, so an empty capture cannot pass; CORS narrowed to
+  what the dashboard uses (`GET`/`PATCH`, `Content-Type`/`X-Request-ID`) instead of `*`.
+- **Caught and corrected:**
+  - Breaking the protections on purpose showed the first version of the PII test did **not**
+    catch `hide_parameters` being turned off: its simulated crash failed the *activity* INSERT,
+    whose parameters hold no PII. The crash now fails the *lead* INSERT (whose parameters include
+    the name, email and phone), and the test fails when `hide_parameters` is off.
+  - `create_app()`'s comment had claimed since Phase 1 that tests could pass their own settings,
+    but it took no argument; it now accepts an optional `Settings`.
+- **Verified the tests can fail:** `hide_parameters=False` → PII test fails; access log with the
+  full URL (query string) → PII test fails; `expose_headers` emptied → both request-id CORS tests
+  fail. All restored; 167 tests pass.

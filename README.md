@@ -27,7 +27,7 @@ backend/
     models/       SQLAlchemy models: leads, activities, webhook_events
     schemas/      Pydantic response models
   alembic/        database migrations
-  scripts/        init-test-db.sql (creates the test database in local Postgres)
+  scripts/        seed.py (demo data), send_test_webhook.py, init-test-db.sql
   tests/
     unit/         no database needed
     integration/  run against real PostgreSQL
@@ -376,6 +376,27 @@ cd frontend
 npm install
 npm run dev                               # http://localhost:5173
 ```
+
+### 4. Demo data (optional)
+
+```bash
+cd backend
+uv run python -m scripts.seed
+# Seed complete: 25 created, 4 updated, 1 unchanged, 0 duplicate deliveries, 39 status changes.
+```
+
+The seed does **not** insert rows directly. Every lead is a Meta payload validated and processed by
+the same webhook service as a real delivery (delivery row + `LEAD_CREATED`); a few leads get a
+second event (`LEAD_UPDATED`, one identical → `UNCHANGED`); status histories, including a lost
+lead being reopened, go through the status service (`STATUS_CHANGED`). The demo data is a real
+run of the system with a genuine audit trail.
+
+- **Idempotent:** event ids are fixed, so a second run reports 30 duplicate deliveries and writes
+  nothing. Status history is applied only to leads created in that run.
+- **Production guard:** with `ENVIRONMENT=production` it refuses unless `--allow-production` is
+  passed.
+- **Trade-off:** because nothing is backdated, `createdAt` is the time the seed ran; the
+  lead's Meta submission time (`metaCreatedAt`) is spread over the preceding week.
 
 ## Environment variables (backend)
 

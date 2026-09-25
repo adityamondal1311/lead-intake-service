@@ -520,3 +520,18 @@ services, focused OpenAPI examples, and the final backend checkpoint.
 - **Verified the tests can fail:** `hide_parameters=False` → PII test fails; access log with the
   full URL (query string) → PII test fails; `expose_headers` emptied → both request-id CORS tests
   fail. All restored; 167 tests pass.
+
+### Phase 7: Demo data seed script
+- **AI generated:** `scripts/seed.py` (25 leads with coworking-themed campaigns, follow-up events,
+  status histories cycling through every status including a reopened lead) and
+  `tests/integration/test_seed.py`; README demo-data section.
+- **Human decided:** the seed must use the real services (payload validation, webhook service,
+  status service), never direct inserts, so the demo is a genuine run of the system; fixed event
+  ids for idempotency; status history only for leads created in the current run, so a re-run
+  never replays it; refuse `ENVIRONMENT=production` without `--allow-production`; no backdating
+  (timestamps are honest), with `metaCreatedAt` spread over the preceding week instead.
+- **Verified by:** on the dev database, run 1 → 25 created, 4 updated, 1 unchanged,
+  39 status changes; run 2 → 30 duplicate deliveries and nothing written; the production guard
+  prints the refusal and exits 1; all five statuses present; a reopened lead's timeline reads
+  NEW → CONTACTED → QUALIFIED → LOST → QUALIFIED. Tests cover the audit trail, the second run
+  writing nothing, and the production guard; 170 tests pass.

@@ -110,6 +110,90 @@ index is the scaling path.
 Constraint and index names follow a naming convention set on the SQLAlchemy `MetaData`, so
 migrations can reference them predictably.
 
+## API
+
+Interactive docs: `http://localhost:8000/docs` (OpenAPI at `/openapi.json`). JSON is camelCase.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | Liveness + database check (503 if Postgres is unreachable) |
+| `GET` | `/leads` | Paginated, filterable, searchable lead list |
+| `GET` | `/leads/{id}` | One lead with its activity timeline |
+| `PATCH` | `/leads/{id}/status` | Change status; records a `STATUS_CHANGED` activity |
+| `POST` | `/webhook/meta-lead` | Meta lead ingestion *(webhook phase)* |
+
+### `GET /leads`
+
+| Param | Default | Rules |
+|---|---|---|
+| `page` | 1 | ≥ 1. A page past the end returns an empty `data` list with correct totals. |
+| `limit` | 20 | 1–100 |
+| `status` | – | `NEW`, `CONTACTED`, `QUALIFIED`, `CONVERTED` or `LOST` |
+| `search` | – | ≤ 100 chars, trimmed. Case-insensitive substring of name, email or phone; `%` and `_` match literally. |
+
+Ordered newest first (`created_at DESC, id DESC`; the id tie-break keeps page boundaries stable).
+
+```json
+{
+  "data": [
+    {"id": "…", "fullName": "Rahul Sharma", "email": "rahul@example.com", "phone": "+919999999999",
+     "status": "NEW", "source": "META_ADS", "campaignId": "cmp_1", "createdAt": "2026-09-25T10:00:00Z"}
+  ],
+  "pagination": {"page": 1, "limit": 20, "total": 1, "totalPages": 1}
+}
+```
+
+### `GET /leads/{id}`
+
+```json
+{
+  "lead": {"id": "…", "externalId": "meta_lead_123", "fullName": "Rahul Sharma", "…": "…",
+           "formId": "form_1", "adId": "ad_1", "metaCreatedAt": "…", "updatedAt": "…"},
+  "activities": [
+    {"id": "…", "type": "STATUS_CHANGED", "actor": "user:dashboard",
+     "details": {"from": "NEW", "to": "CONTACTED"}, "createdAt": "…"},
+    {"id": "…", "type": "LEAD_CREATED", "actor": "system:meta_webhook", "details": {"…": "…"}, "createdAt": "…"}
+  ]
+}
+```
+
+Activities are newest first. The raw webhook payload is never exposed.
+
+### `PATCH /leads/{id}/status`
+
+Request `{"status": "CONTACTED"}` → `{"lead": {…}, "activity": {…}}`. Any status may move to any
+other. Setting the status the lead already has is a **no-op**: nothing is written and
+`"activity": null`, keeping the audit trail free of noise.
+
+How it stays consistent, all in **one transaction**:
+
+1. `SELECT … FOR UPDATE` locks the lead's row. A concurrent update of the same lead waits here, so
+   the `from` value recorded next is always the status actually being replaced.
+2. Same status → return without writing.
+3. `UPDATE` the status and `INSERT` the `STATUS_CHANGED` activity (`{"from", "to"}`).
+4. `COMMIT`. If either write fails, both roll back: a lead and its audit trail never disagree.
+
+Activity timestamps use `clock_timestamp()` (time of insert, after the lock is held) rather than
+`now()` (transaction start), so the timeline shows concurrent changes in the order they happened.
+
+### Errors
+
+Every non-2xx response has the same envelope:
+
+```json
+{"error": {"code": "LEAD_NOT_FOUND", "message": "Lead not found", "details": null, "requestId": "3f2a…"}}
+```
+
+| Status | Code | When |
+|---|---|---|
+| 422 | `VALIDATION_ERROR` | Invalid query/path/body; `details` lists `{location, field, message}` per problem (the rejected value is not echoed) |
+| 404 | `LEAD_NOT_FOUND` | Unknown lead id |
+| 404 | `NOT_FOUND` | Unknown route |
+| 405 | `METHOD_NOT_ALLOWED` | Wrong method (with `Allow` header) |
+| 500 | `INTERNAL_ERROR` | Unexpected failure; traceback is logged under the `requestId`, never returned |
+
+`requestId` matches the `X-Request-ID` response header and the server log lines for that request.
+
 ## Local development
 
 ### Prerequisites
@@ -187,6 +271,12 @@ constraints for every enum (each enum value accepted, unknown values rejected), 
 delete rules, database-side defaults, models/migrations staying in sync (`alembic check`), and a
 full downgrade/upgrade round trip.
 
+The API tests cover pagination, filtering and search edge cases, every validation error, and the
+two properties the status update exists for: **atomicity** (a real database failure on the
+activity insert rolls back the status change) and **concurrency** (four simultaneous changes to
+one lead, repeated 5×, must yield one unbroken `from → to` chain shown in the right order). Both
+tests were confirmed to fail when the row lock or the timestamp fix is removed.
+
 ## Observability
 
 - Logs are one JSON object per line on stdout (easy to filter in Railway or any log pipeline).
@@ -204,8 +294,6 @@ full downgrade/upgrade round trip.
       logging, request IDs, tests against real Postgres in CI
 - [x] Phase 3: `leads`, `activities`, `webhook_events` models, first migration (constraints,
       indexes), database-level constraint tests
-- [ ] Phase 4: lead APIs
-  - [x] `GET /leads` (pagination, status filter, search), `GET /leads/{id}`, JSON error envelope
-  - [x] `PATCH /leads/{id}/status` (transactional, row-locked, audited; same status is a no-op)
-  - [ ] API integration tests, API documentation
+- [x] Phase 4: lead APIs: list (pagination, filter, search), detail with timeline, transactional
+      row-locked status updates, JSON error envelope, API integration tests
 - [ ] Phase 5+: webhook, frontend, Docker, deployment

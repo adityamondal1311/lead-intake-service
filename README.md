@@ -601,6 +601,20 @@ railway config apply                # apply it
 | `DATABASE_URL=${{Postgres.DATABASE_URL}}` | private-network URL; the app normalizes `postgresql://` to the psycopg driver |
 | `CORS_ORIGINS=["https://${{frontend.RAILWAY_PUBLIC_DOMAIN}}"]` | only the deployed dashboard may call the API from a browser |
 | `VITE_API_BASE_URL=https://${{backend.RAILWAY_PUBLIC_DOMAIN}}` (frontend) | passed to the Docker build (the Dockerfile declares the `ARG`) and compiled into the bundle |
+| `RAILWAY_DOCKERFILE_PATH=Dockerfile` (both) | pins the Dockerfile builder; the IaC `build.builder` field was reported as applied but not persisted (services stayed on Railpack) |
+| Restart policy | Railway's default, "On Failure" (up to 10 restarts); not declared, because this IaC version does not persist it either |
+
+**Bootstrapping a new environment (order matters).** Reference variables need their target to
+exist: `CORS_ORIGINS` and `VITE_API_BASE_URL` point at the services' public domains, so create
+both domains (`railway domain --service backend`, `--service frontend`) **before** the first
+successful deploy, then redeploy from source (`railway redeploy --service <name> --from-source`)
+so the frontend is rebuilt with the real API URL. On the first deploy of this project the domains
+did not exist yet: `CORS_ORIGINS` resolved to `["https://"]`, the app's origin validator rejected
+it inside the release step, and Railway stopped the deploy before it took traffic.
+
+The Railway CLI evaluates `railway.ts` with the SDK, whose CLI-version check fails on Windows
+(it cannot execute the npm `railway.cmd` shim). There, point it at the real binary for the
+command: `$env:_ = "$env:APPDATA\npm\node_modules\@railway\cli\bin\railway.exe"`.
 
 Secrets are **not** in the repository: `META_APP_SECRET` and `META_VERIFY_TOKEN` are generated
 locally, set in Railway directly, and marked `preserve()` in the IaC file so applying it never

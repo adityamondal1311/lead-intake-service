@@ -866,3 +866,41 @@ services, focused OpenAPI examples, and the final backend checkpoint.
 - **Verified by:** `railway.ts` type-checks against the pinned SDK; entrypoint modes in Docker:
   default (migrate, then serve), `false` + command (skip, run the command, exit 0), `false` alone
   (serve without migrating), invalid value (exit 1); the new CI step run locally.
+
+### Phase 12: First Railway deploy — findings and fixes
+- **What the real deploy exposed (and how each was handled):**
+  - **IaC settings not persisted.** Two `railway config apply` runs reported success, but a
+    detailed `railway config plan --json` still showed the services on **Railpack** with no
+    restart policy (the builds did in fact use our Dockerfiles, which Railway detects at the root
+    directory). Fixed in code: `build.builder` replaced by Railway's documented
+    `RAILWAY_DOCKERFILE_PATH` variable (variables do apply), and the restart policy left to
+    Railway's documented default ("On Failure", 10 restarts), which is the intended behaviour.
+    `railway config plan` now reports "already up to date", so a future plan shows only real
+    drift.
+  - **First deploy failed in the release step, as designed.** The public domains did not exist
+    yet, so `CORS_ORIGINS` resolved to `["https://"]`; the Phase 7 origin validator rejected it
+    inside `alembic upgrade head` (which loads settings), the pre-deploy exited non-zero and
+    Railway stopped the deploy before it took traffic. Resolved by creating the domains first and
+    redeploying from source; the bootstrap order is now in the README.
+  - **How Railway runs the pre-deploy command:** directly, not through the image's `ENTRYPOINT`
+    (the release-step log starts in Alembic with no entrypoint line; the app container then logs
+    "skipping migrations at start"). The entrypoint supports both, so nothing depended on it.
+  - **SDK CLI-version check fails on Windows:** it runs `execFileSync("railway", ["--version"])`,
+    which cannot execute npm's `railway.cmd` shim, and reports every failure as "CLI too old"
+    (ours is 5.62.1 ≥ 5.42.1). The check honours the `_` environment variable as the CLI path, so
+    it is pointed at the real `railway.exe` for the command. Documented in the README.
+- **Human decided:** a fresh Railway project (`lead-intake-service`) instead of reusing a stray
+  one created during sign-up; the account owner deletes the stray project; secrets generated
+  locally with Python's `secrets` (32 bytes, URL-safe), set straight into Railway with the CLI
+  and never displayed, written to a file or committed.
+- **Verified live:** backend `/health` ok with the database; `/leads` answers on a fresh database
+  (schema created by the release step); `/` redirects to `https://…/docs` (proxy headers honoured);
+  builds loaded `backend/Dockerfile` and `frontend/Dockerfile`; the app started with "skipping
+  migrations at start" as uvicorn PID 1 on Railway's `PORT`; Postgres (PostgreSQL 18, Railway's
+  `postgres-ssl:18`) has no public domain and no TCP proxy variables; the frontend bundle contains
+  the HTTPS backend URL; the CSP allows only that origin; a signed webhook with the real secret
+  is processed and its repeat is a duplicate; the local `change-me` secret gets 401; the Meta
+  handshake echoes the challenge for the real token and returns 403 otherwise; CORS preflight
+  allowed only from the live frontend (another origin 400, `localhost:3000` not allowed); a
+  status PATCH from the live origin recorded `NEW → CONTACTED`; screenshots of the live list and
+  detail pages; zero PII in the live backend log.

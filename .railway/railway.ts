@@ -23,20 +23,24 @@ export default defineRailway(() => {
     // checkSuites: Railway's "Wait for CI": deploy only once GitHub Actions has passed.
     source: github(REPO, { branch: 'main', rootDirectory: 'backend', checkSuites: true }),
     build: {
-      builder: 'DOCKERFILE', // backend/Dockerfile
       watchPatterns: ['/backend/**'], // a frontend-only change does not redeploy the backend
     },
+    // Restart policy: Railway's default ("On Failure", up to 10 restarts) is what we want. It is
+    // not declared here because this IaC version does not persist it (see RAILWAY_DOCKERFILE_PATH).
     deploy: {
       // Release step: runs once per deploy in the new image, before it takes traffic. A failed
-      // migration fails the deploy and the previous version keeps serving.
+      // migration fails the deploy and the previous version keeps serving. (Railway runs this
+      // command directly, not through the image's ENTRYPOINT.)
       preDeployCommand: ['alembic upgrade head'],
       // Traffic moves only once the new container answers /health (which checks PostgreSQL).
       healthcheckPath: '/health',
       healthcheckTimeout: 120,
-      restartPolicyType: 'ON_FAILURE',
-      restartPolicyMaxRetries: 5,
     },
     env: {
+      // Forces the Dockerfile builder (backend/Dockerfile). `build.builder: 'DOCKERFILE'` was
+      // reported as applied but not persisted (the service stayed on Railpack), so the builder
+      // is pinned with Railway's documented variable instead, which IaC does apply.
+      RAILWAY_DOCKERFILE_PATH: 'Dockerfile',
       ENVIRONMENT: 'production', // refuses to start without the two secrets below
       LOG_LEVEL: 'INFO',
       // Migrations are the release step above, not a per-replica start-up action.
@@ -53,16 +57,14 @@ export default defineRailway(() => {
   const frontend = service('frontend', {
     source: github(REPO, { branch: 'main', rootDirectory: 'frontend', checkSuites: true }),
     build: {
-      builder: 'DOCKERFILE', // frontend/Dockerfile
       watchPatterns: ['/frontend/**'],
     },
     deploy: {
       healthcheckPath: '/',
       healthcheckTimeout: 60,
-      restartPolicyType: 'ON_FAILURE',
-      restartPolicyMaxRetries: 5,
     },
     env: {
+      RAILWAY_DOCKERFILE_PATH: 'Dockerfile', // frontend/Dockerfile (see backend)
       // Passed to the Docker build (the Dockerfile declares ARG VITE_API_BASE_URL) and compiled
       // into the bundle: the browser calls the backend's public HTTPS domain.
       VITE_API_BASE_URL: 'https://${{backend.RAILWAY_PUBLIC_DOMAIN}}',

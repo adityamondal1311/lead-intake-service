@@ -9,6 +9,24 @@ I (Aditya) am responsible for all final code, architecture decisions, tests, doc
 submitted commits. AI-generated output was not accepted without review and verification. Commits
 are made under my name, on my instruction, after that review.
 
+## Summary for Reviewers
+
+- **How AI was used:** Claude Code wrote most of the code, tests and first drafts of the docs,
+  phase by phase, against a written spec (stack, data model, API contracts, webhook algorithm)
+  fixed before any code existed. It also ran the checks and the manual/live verification.
+- **What I decided:** the architecture and every interpretation of the brief
+  ([D1–D23](#architecture-decisions)), what "correct" means for idempotency and the audit trail,
+  the transaction and locking strategy, the test strategy, scope limits, and each phase's commit
+  split. Every phase started with a plan I accepted or changed before implementation.
+- **How it was verified:** lint, tests and builds after every step; database behaviour against
+  real PostgreSQL, never SQLite; manual checks against a running server, then the live
+  deployment; each key protection (row locks, `ON CONFLICT`, `clock_timestamp()`, no-PII logging,
+  debounce, retry policy, server-authoritative status) **deliberately removed to confirm its test
+  fails**, then restored.
+- **What review caught:** the log below lists each correction, including bugs found by probing
+  (timeline order under concurrency, `ENVIRONMENT=prod` silently skipping the secret check, PII in
+  SQL error messages, a 130 s health-check hang) and my own process slips.
+
 ## AI Tools Used
 
 | Tool | Used for |
@@ -23,8 +41,10 @@ are made under my name, on my instruction, after that review.
   each decision has to answer.
 - **Implementation:** code for each phase, generated against a written spec (tech stack, data model,
   API contracts, webhook algorithm) that was agreed on before any code was written.
-- **Verification:** running ruff, pytest, oxlint and the TypeScript build after every step, plus
-  manual checks against a running server and database.
+- **Verification:** running ruff, pytest, oxlint, Vitest and the TypeScript build after every step,
+  plus manual checks against a running server and database, and later the live deployment.
+- **Operations:** Docker and Railway setup through their CLIs, with each credential step
+  approved by the account owner.
 
 ## AI-Generated Sections
 
@@ -44,6 +64,12 @@ Updated per phase; the detail is in the [AI Contribution Log](#ai-contribution-l
 - Phase 8: app shell, typed API client, lead list with URL-driven filters and pagination.
 - Phase 9: lead detail page, activity timeline, server-authoritative status updates.
 - Phase 10: Vitest/Testing Library/MSW harness, stateful fake API, 80 frontend tests.
+- Phase 11: backend and frontend Dockerfiles, entrypoint, nginx templates, compose services, CI
+  `docker` job.
+- Phase 12: `.railway/railway.ts`, the entrypoint's release-step mode, README deployment section.
+- Phase 13: README restructure for reviewers (new Architecture, Audit Trail, Trade-offs, Scaling,
+  Security, Known Limitations and Future Improvements sections), this file's summary and
+  D12–D23.
 
 ## Human-Written / Human-Decided Sections
 
@@ -57,7 +83,12 @@ Updated per phase; the detail is in the [AI Contribution Log](#ai-contribution-l
 - Database constraints and indexing strategy: every constraint enforced in Postgres, every index
   tied to a specific query.
 - Test strategy: which behaviours are critical enough to verify against real PostgreSQL
-  (constraints, idempotency, rollback, concurrency).
+  (constraints, idempotency, rollback, concurrency); frontend tests at the network boundary with a
+  stateful fake; proving key tests fail when their protection is removed.
+- Frontend behaviour: URL as the list state, server-authoritative status updates, retry policy,
+  runtime validation of activity data.
+- Deployment design: pinned non-root images, release-step migrations, Wait for CI, private
+  database, secrets handling, synthetic data only on the public demo.
 - Scope limits (see [Known Limitations](#known-limitations--deliberate-scope)), commit granularity
   and the commit trail itself.
 
@@ -138,6 +169,83 @@ AGENT.md and are summarized in the README, with no separate DECISIONS.md.
 `ruff` for lint and formatting. CI runs from the first commit, so every later commit is proven to
 lint, test and build.
 
+D12–D23 were decided during implementation, when a phase raised the question.
+
+### D12. Webhook events are partial updates; the webhook never changes status
+
+A field absent or blank in a later event never erases the stored value, since events are not
+guaranteed to be full snapshots. Status belongs to the sales team: a Meta event can update contact
+and campaign fields but never undoes a status change. Identical data is `UNCHANGED`: the delivery is
+recorded, no activity is written.
+
+### D13. Minimal duplicate response
+
+A redelivered event gets `200 {"status": "duplicate"}` and nothing else. Meta only needs a 2xx to
+stop retrying; returning the lead would cost a lookup and expose data for no consumer.
+
+### D14. Database constraints and row locks carry concurrency
+
+No check-then-insert anywhere: `INSERT … ON CONFLICT DO NOTHING` on both unique keys is the race
+boundary. Read-modify-write on a lead (status change, webhook update) holds `SELECT … FOR UPDATE`,
+rather than optimistic versioning, so an audit entry's `from` is always the value actually
+replaced and neither writer has to retry. Contention per lead is rare, so the waiting is cheap.
+
+### D15. `clock_timestamp()` for activity time
+
+`now()` is the transaction start; a transaction that waited on the row lock could be stamped
+before the one it waited for, misordering the timeline (found by probe: 17/20 runs). Activities
+use the time of the insert instead.
+
+### D16. Strict configuration
+
+`ENVIRONMENT`, `LOG_LEVEL` and `RUN_MIGRATIONS_ON_START` accept exact values only, and CORS origins
+must be `scheme://host[:port]`. A wrong value stops startup instead of running misconfigured
+(`ENVIRONMENT=prod` previously skipped the production secret check silently).
+
+### D17. The URL is the lead list's state
+
+Search, status and page live in the query string: views are shareable and Back works. Typing and
+filter changes replace the history entry, pagination pushes one; invalid values are normalized in
+the client rather than sent to the API.
+
+### D18. Server-authoritative status updates, not optimistic
+
+A status change is an audited domain operation, so the UI never shows a change the server has not
+recorded. The select shows the requested value (disabled, "Saving…"), the PATCH response is
+written to the cache immediately, and a background refetch reconciles concurrent changes.
+
+### D19. Runtime-validated activity types
+
+TypeScript types describe what the API promises but do not check what arrives. `parseActivity`
+validates each entry's shape before narrowing to a typed union; an unexpected entry renders as a
+generic line instead of breaking the page.
+
+### D20. Frontend tests with a stateful MSW fake; browser E2E deferred
+
+Faking at the network boundary keeps the real client, retries and cancellation under test; a
+stateful fake lets PATCH affect later GETs, so tests cover flows. Playwright against the real stack
+was deferred: the frontend is tested through rendered user interactions against a faithful fake,
+and the backend separately against real PostgreSQL.
+
+### D21. Container images
+
+Base images pinned by version and digest; non-root users; dependencies only from lockfiles; no
+Node at frontend runtime. The API origin is compiled into the frontend at build time (one
+frontend/backend topology; runtime configuration deferred). nginx sends a strict CSP.
+
+### D22. Migrations: at start locally, as a release step on Railway
+
+Local Docker is one instance, so migrating at start keeps `docker compose up` one command. On
+Railway `alembic upgrade head` is the pre-deploy step (`RUN_MIGRATIONS_ON_START=false`): once per
+deploy, before traffic moves, and a failure stops the deploy while the old version keeps serving.
+
+### D23. Railway Infrastructure as Code and the live demo
+
+`.railway/railway.ts` rather than `railway.json`, which Railway has deprecated (not read after
+2026-12-01). Deploys wait for CI and use watch paths; Postgres is private; secrets are set only in
+Railway and marked `preserve()`. The public demo holds synthetic data seeded through the real
+services, because it has no authentication (D9).
+
 ## Important Prompts
 
 Condensed, in order.
@@ -173,6 +281,15 @@ Condensed, in order.
     malformed id = not found, show reference ids, manual checklist for the interaction."* → Phase 9.
 13. *"Phase 10: Vitest + Testing Library + MSW with a stateful fake API, real timers, no
     Playwright, prove the key tests fail when protections are removed."* → Phase 10.
+14. *"Phase 11: containerize both apps: pinned, non-root, migrations at start, nginx with
+    security headers, and a CI job that proves the stack runs."* → Phase 11.
+15. *"Phase 12: deploy to Railway with Infrastructure as Code, release-step migrations, Wait for
+    CI, private Postgres; verify live, including a failed release in a throwaway environment."*
+    → Phase 12.
+16. *"Phase 13: restructure the README for reviewers: remove the WIP note and progress list, fix
+    stale facts, add architecture, audit trail, trade-offs, scaling, security, known limitations
+    and prioritized future improvements; move deployment debugging history to AGENT.md."* →
+    Phase 13.
 
 ## AI Output Review Standard
 
@@ -192,8 +309,11 @@ against real PostgreSQL.
 ## Verification Process
 
 - Every step ends with `ruff check`, `ruff format --check` and `pytest` (backend), and
-  `npm run lint` (oxlint) and `npm run build` (`tsc -b` + Vite) (frontend). CI repeats these on
-  every push.
+  `npm run lint` (oxlint), `npm run test` (Vitest, from Phase 10) and `npm run build` (`tsc -b` +
+  Vite) (frontend). CI repeats these on every push and smoke-tests the container stack.
+- Key protections are checked by **breaking them on purpose** and confirming a test fails (row
+  locks, `ON CONFLICT`, `clock_timestamp()`, hidden SQL parameters, debounce, retry policy,
+  server-authoritative status), then restoring them.
 - Behaviour that depends on the database (migrations, constraints, locking, idempotency) is tested
   against real PostgreSQL (Docker locally, a service container in CI), not SQLite.
 - Runtime behaviour is also checked by hand against a running server and database, which is where
@@ -220,6 +340,8 @@ against real PostgreSQL.
 - **Public, unauthenticated live dashboard.** The deployed dashboard and its API have no login, so
   anyone with the URL can change lead statuses. The deployment holds only synthetic demo data;
   real use would put API authentication/authorization or SSO in front of the dashboard API (D9).
+- **Frontend API origin fixed at build time** (D21); changing it needs a rebuild.
+- **One actor for all dashboard changes** (`user:dashboard`), since there are no user accounts.
 
 ## AI Contribution Log
 
@@ -936,3 +1058,26 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   `SKIPPED` by watch paths; a backend or frontend change would show the wait explicitly.
 - **Housekeeping for the account owner:** delete the stray project `glorious-respect` created
   during sign-up (not used by this deployment).
+
+### Phase 13: Final documentation
+- **AI generated:** the restructured README (overview with live links and a "for reviewers"
+  path, table of contents, features mapped to the brief, system/layering/data-flow diagrams, and
+  new Audit Trail, Trade-offs, Scaling Considerations, Security, Known Limitations and Future
+  Improvements sections); this file's reviewer summary and D12–D23; a small link/anchor checker
+  (Node standard library, scratch folder, not committed).
+- **Human decided:** one README with a table of contents, not a `docs/` folder; the assignment's
+  section names as headings; the Progress checklist and "work in progress" note removed (the git
+  history and this log tell that story); Railway debugging history kept here, not in the README;
+  scaling framed as next steps if measurements demand them, not as claims that the current system
+  fails; limitations and future improvements kept separate, the latter prioritized.
+- **Caught and corrected (stale or wrong facts in the previous README):** Railway still marked
+  "upcoming"; "PostgreSQL 17" without the 18.6 used on Railway; "Node.js 20.19+" although the
+  frontend tests need Node ≥ 24.15 (jsdom 30); the layout omitted `services/` and
+  `repositories/`; the errors table lacked `401 INVALID_SIGNATURE`, `403 FORBIDDEN` and
+  `413 PAYLOAD_TOO_LARGE`.
+- **Verified by:** test counts taken from fresh runs (170 backend, 80 frontend), versions from
+  `package.json`/`pyproject.toml`, image sizes from `docker images`; every relative link and
+  heading anchor in both files resolved by the checker; each new claim about the code (activity
+  details, append-only repository, error codes, log fields) checked against the source; the seed
+  and test-webhook commands run against the compose stack (duplicate-only seed re-run, `CREATED`,
+  `401`); live `/health` ok.

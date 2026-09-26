@@ -18,6 +18,8 @@ dist/
 
 # Local assistant context (kept on the developer machine only)
 CLAUDE.md
+HANDOFF.md
+README.phase12.md
 .claude/
 
 # OS / editor

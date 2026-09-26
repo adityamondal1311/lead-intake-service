@@ -47,6 +47,7 @@ The live deployment holds **synthetic demo data only** and has **no authenticati
 - [Scaling Considerations](#scaling-considerations)
 - [Security](#security)
 - [Observability](#observability)
+- [Final Engineering Review](#final-engineering-review)
 - [Known Limitations](#known-limitations)
 - [Future Improvements](#future-improvements)
 - [AI Usage](#ai-usage)
@@ -99,9 +100,11 @@ is ever needed.
 
 **Why no queue (yet).** A webhook delivery does a handful of indexed writes in one transaction and
 answers in milliseconds, well within Meta's timeout. A queue would add infrastructure and a second
-consistency boundary for no current benefit. The design keeps the path open: every delivery is
-already persisted in `webhook_events` before processing, which is the first half of
-persist → acknowledge → process-in-a-worker (see [Scaling Considerations](#scaling-considerations)).
+consistency boundary for no current benefit. The design keeps the path open: every accepted
+delivery is already recorded in `webhook_events` with its raw payload (today in the same
+transaction as its processing, so a failure rolls it back for Meta to retry); moving that insert
+into its own transaction is the first step of persist → acknowledge → process-in-a-worker (see
+[Scaling Considerations](#scaling-considerations)).
 
 ### Backend layering
 
@@ -246,7 +249,7 @@ that a delivery was received survives. UUID keys, UTC `timestamptz`, phone numbe
 
 | Index | Serves |
 |---|---|
-| `ix_leads_status_created_at (status, created_at DESC)` | Lead list filtered by status, newest first |
+| `ix_leads_status_created_at (status, created_at DESC)` | Lead list filtered by a selective status, and every status-filtered count (index-only). For a common status the planner rightly prefers walking `ix_leads_created_at` (measured, see [Final Engineering Review](#final-engineering-review)) |
 | `ix_leads_created_at (created_at DESC)` | Unfiltered lead list, newest first |
 | `ix_activities_lead_id_created_at (lead_id, created_at DESC)` | One lead's timeline (also covers the FK, which Postgres does not index automatically) |
 | `uq_leads_external_id` | Webhook lookup of an existing lead by Meta `lead_id` |
@@ -310,7 +313,7 @@ Every non-2xx response has the same envelope:
 
 | Status | Code | When |
 |---|---|---|
-| 422 | `VALIDATION_ERROR` | Invalid query/path/body; `details` lists `{location, field, message}` per problem (the rejected value is not echoed, as it may be PII) |
+| 422 | `VALIDATION_ERROR` | Invalid query/path/body; `details` lists `{location, field, message}` per problem. The rejected value itself is not returned, as it may be PII (a message can still quote a single offending character, e.g. for a malformed UUID) |
 | 401 | `INVALID_SIGNATURE` | Webhook signature missing or wrong |
 | 403 | `FORBIDDEN` | Webhook handshake with a wrong verify token |
 | 404 | `LEAD_NOT_FOUND` / `NOT_FOUND` | Unknown lead id / unknown route |
@@ -464,10 +467,11 @@ docker compose exec backend python -m scripts.seed      # optional: 25 demo lead
 | API + docs | http://localhost:8000/docs |
 | PostgreSQL | `localhost:5432` (user / password / db: `lead_intake`) |
 
-Send a signed test webhook (Python standard library only, nothing to install):
+Send a signed test webhook (Python 3 standard library only, nothing to install; use `python` or
+`py` if that is how Python 3 is invoked on your machine):
 
 ```bash
-python backend/scripts/send_test_webhook.py --secret change-me
+python3 backend/scripts/send_test_webhook.py --secret change-me
 ```
 
 `docker compose down -v` stops everything and deletes the data. Local secrets default to
@@ -476,7 +480,8 @@ python backend/scripts/send_test_webhook.py --secret change-me
 ### Local development (without containers for the app)
 
 Prerequisites: Docker (for PostgreSQL), [uv](https://docs.astral.sh/uv/) (installs Python 3.12
-itself), Node.js 24 (≥ 24.15, required by the frontend test environment; CI uses Node 24).
+itself), Node.js 22.22.2+ or 24.15+ (the strictest ranges among the frontend tools, from
+react-router and jsdom; CI and the Docker build use Node 24).
 
 ```bash
 # 1. PostgreSQL: databases lead_intake (development) and lead_intake_test (pytest only)
@@ -495,6 +500,8 @@ npm install
 npm run dev                               # http://localhost:5173
 ```
 
+Recent npm versions warn that `msw`'s install script is not approved; it only copies a browser
+service worker that the tests do not use, so the warning can be ignored.
 If you run the compose `backend` container at the same time, stop it first
 (`docker compose stop backend frontend`): it uses port 8000. The test database is created by
 `backend/scripts/init-test-db.sql` when the volume is first initialised; with an older volume, run
@@ -706,6 +713,7 @@ Checked on the live deployment on 2026-09-26:
 | Seed | refused without `--allow-production`; run 1 created the demo data, run 2 wrote nothing |
 | Logs | JSON, parsed by Railway into fields; zero occurrences of test lead name/email/phone |
 | Watch paths | a push touching only docs and `.railway/` skipped both deployments |
+| Wait for CI | enabled in the applied configuration (`railway config plan` reports no drift); a deploy visibly held back for CI has not been observed yet, because every push since then changed only docs |
 | Failed release | in a throwaway environment, a deploy with a broken `DATABASE_URL` **failed in the release step** while the previous deployment kept serving `/health` 200; environment deleted afterwards |
 
 ## Architecture Decisions
@@ -811,6 +819,28 @@ above address inside the same service boundaries.
 - **Webhook logs** carry the event id, outcome and lead id, never lead data.
 - **Health:** `/health` checks the database (with a 5 s connect timeout) and drives the container
   and Railway healthchecks.
+
+## Final Engineering Review
+
+A final review before submission, on 2026-09-26, checked that what this README claims is
+reproducible from a clean clone and holds in code and in production. Details are in
+[AGENT.md](AGENT.md#phase-14-final-engineering-review).
+
+| Check | Result |
+|---|---|
+| Fresh clone, Docker quick start | Passed: `git clone` into an empty folder, images built without cache, stack healthy in 20 s; dashboard, `/docs`, seed, signed webhook, bad signature (401) and duplicate event all as documented |
+| Fresh clone, local development | Passed: new virtualenv and `node_modules`; ruff clean, 170 backend tests, oxlint clean, 80 frontend tests, strict build |
+| Secret history scan | Passed: all commits searched for the real production secrets and database password (0 occurrences) and for common secret patterns (only test placeholders); no `.env` file ever committed |
+| Dependency audits | `npm audit` (frontend, `.railway`): 0 vulnerabilities; `pip-audit` on the locked Python dependencies (runtime and dev): no known vulnerabilities. This means none were known to the advisory databases on that date |
+| Security boundaries (live) | Passed: HTTP → HTTPS, CSP and security headers, CORS limited to the dashboard origin, error envelopes without stack traces, webhook signature and handshake, no test lead data in the live logs |
+| Claims vs code | Passed: same-transaction audit writes, append-only activities, row locks, constant-time HMAC, production secret check, parameterized SQL, webhook never writing status |
+| Query plans at 100k leads / 300k activities (local) | Unfiltered list, timeline and webhook lookup use their indexes (< 0.2 ms); a status filter uses the status index when the status is selective (0.13 ms) and the `created_at` index when it is common, which is cheaper; counts are index-only scans (~10 ms unfiltered); search is a sequential filter (~90 ms), the documented `ILIKE` limitation |
+| Query plans (production) | 27 leads, so sequential scans are correctly preferred; with sequential scans disabled every query uses its intended index |
+| Manual walkthrough (live, desktop and phone) | Passed: search, status filter, pagination and Back, lead detail and timeline, status change ("Saving…", then the new activity), Back to the same filtered view; status change under a throttled "Slow 3G" network at 375 px (requested value shown disabled while the badge and timeline keep the server state); phone cards without horizontal scrolling, detail layout, status change |
+
+Documentation corrected by the review: `python3` in the quick start, the Node.js minimum, an npm
+warning explained, the status index description, and two statements made more precise (validation
+messages, when deliveries are recorded). No application changes were required.
 
 ## Known Limitations
 

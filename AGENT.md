@@ -70,6 +70,8 @@ Updated per phase; the detail is in the [AI Contribution Log](#ai-contribution-l
 - Phase 13: README restructure for reviewers (new Architecture, Audit Trail, Trade-offs, Scaling,
   Security, Known Limitations and Future Improvements sections), this file's summary and
   D12–D23.
+- Phase 14: the final review's checks and the README "Final Engineering Review" section (no
+  application code changed).
 
 ## Human-Written / Human-Decided Sections
 
@@ -290,6 +292,10 @@ Condensed, in order.
     stale facts, add architecture, audit trail, trade-offs, scaling, security, known limitations
     and prioritized future improvements; move deployment debugging history to AGENT.md."* →
     Phase 13.
+17. *"Phase 14: final review, not another development phase. Fresh clone first, following the
+    README exactly; full-history secret scan; npm audit and pip-audit via uvx; verify every strong
+    claim against the code; query plans at 100k rows; live checks; fix only real findings; one
+    final docs commit."* → Phase 14.
 
 ## AI Output Review Standard
 
@@ -1081,3 +1087,60 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   details, append-only repository, error codes, log fields) checked against the source; the seed
   and test-webhook commands run against the compose stack (duplicate-only seed re-run, `CREATED`,
   `401`); live `/health` ok.
+
+### Phase 14: Final engineering review
+- **Purpose:** prove that what the README claims is reproducible from a clean clone and holds in
+  code and in production. No features; only real findings were acted on.
+- **AI performed:** the fresh-clone run, the secret and dependency scans, live boundary checks, a
+  claim-by-claim code check, the query-plan experiment, and the documentation corrections below.
+- **Human decided:** the review's scope and order; findings sorted into must-fix / documentation /
+  informational, with informational findings recorded, not turned into work; `pip-audit` run
+  temporarily through `uvx` (nothing added to the project); query plans judged on a 100k-row local
+  dataset, because production's 27 rows cannot show planner choices; one final `docs:` commit.
+- **Fresh clone:** cloned into an empty folder (new compose project, volumes, virtualenv and
+  `node_modules`; images built with `--no-cache`). Docker path: stack healthy in 20 s, dashboard
+  rendering data, `/docs`, seed, signed webhook `CREATED`, bad signature `401`, same event
+  `duplicate`. Local path: `uv sync`, migrations, ruff, 170 tests, uvicorn `/health`; `npm
+  install`, oxlint, 80 tests, strict build. Stranger-facing friction found: `python` in the quick
+  start (only `python3` exists on many macOS/Linux machines, CI itself calls `python3`); an npm 11
+  warning about `msw`'s unapproved install script, unexplained.
+- **Security:** the real `META_APP_SECRET`, `META_VERIFY_TOKEN` and Railway Postgres password were
+  read into memory only and searched for in the full history of all 42 commits: 0 occurrences.
+  Pattern scan (keys, tokens, connection strings with credentials): only test placeholders
+  (`u:p@db`). No `.env` ever committed. Live: HTTP → HTTPS 301; CSP, `X-Frame-Options`,
+  `nosniff`, referrer policy; CORS preflight 200 only from the dashboard origin (another origin and
+  `localhost:3000` → 400); 404/405/422 envelopes with request ids and CORS headers, no stack
+  traces; signed webhook processed then duplicate; wrong secret 401; handshake 200/403; the test
+  lead's name, email and phone absent from the live logs.
+- **Dependency audits:** `npm audit` 0 vulnerabilities (frontend and `.railway`, with and without
+  dev dependencies); `pip-audit` 2.10.1 on `uv export` of the locked runtime and dev dependencies:
+  no known vulnerabilities.
+- **Query plans** (`explain_review`, a throwaway database migrated with the real migrations,
+  100k leads, 300k activities, then dropped): unfiltered list via `ix_leads_created_at` 0.1 ms;
+  timeline via `ix_activities_lead_id_created_at` 0.17 ms; webhook `external_id … FOR UPDATE` via
+  `uq_leads_external_id` 0.18 ms; counts index-only (10 ms unfiltered, 2 ms per status); `ILIKE`
+  search 88 ms (sequential filter, the documented limitation). **Finding:** for a common status
+  (20%) the planner walks `ix_leads_created_at` and filters rather than using
+  `ix_leads_status_created_at`. Checked further instead of assumed: for a rare status (0.5%) it
+  uses the status index (0.13 ms page 1); with that index dropped, the last page went from 2.4 ms
+  to a 9.8 ms sequential scan. Correct planner behaviour, not an indexing defect; the README index
+  table was made precise. Production (27 leads, PostgreSQL 18.6): sequential scans by default, as
+  expected at this size; with `enable_seqscan = off` every query used its intended index.
+- **Caught and corrected (documentation only):** the quick start now uses `python3`; the Node.js
+  minimum is 22.22.2+ or 24.15+ (my Phase 13 "≥ 24.15" was too narrow: jsdom 30 also supports
+  22.22.2+, react-router 8 needs ≥ 22.22); the npm warning is explained; the README said every
+  delivery is "persisted before processing" but the insert is in the same transaction, so a
+  failure rolls it back (reworded); "the rejected value is not echoed" made precise (a UUID error
+  can quote one offending character); the status index description; Wait for CI marked as
+  configured but not yet observed holding a deploy.
+- **Verified unchanged:** every version claim against the installed packages and lockfiles;
+  Railway's config-as-code deprecation date (2026-12-01) against Railway's documentation.
+- **Informational, deliberately not acted on:** a Starlette deprecation warning about `httpx` in
+  the test client (test-only); no `Strict-Transport-Security` header (never claimed); production
+  now holds 27 leads (the review added one synthetic lead through the signed webhook).
+- **Manual walkthrough (done by me on the live deployment):** desktop search, filter, pagination
+  and Back, detail and timeline, status change, Back to the same filtered view; a status change
+  under DevTools "Slow 3G" at 375 px showing the server-authoritative saving state; a real phone
+  (cards, no horizontal scrolling, detail layout, status change). All passed.
+- **Conclusion:** the repository reproduces from a clean clone as documented, and its correctness
+  and security claims hold in code and in production. Only documentation needed correcting.

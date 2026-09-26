@@ -904,3 +904,35 @@ services, focused OpenAPI examples, and the final backend checkpoint.
   allowed only from the live frontend (another origin 400, `localhost:3000` not allowed); a
   status PATCH from the live origin recorded `NEW → CONTACTED`; screenshots of the live list and
   detail pages; zero PII in the live backend log.
+
+### Phase 12: Live verification and demo data
+- **AI performed (with the account owner's approval for each credential):** created an ed25519 SSH
+  key on the dev machine and registered its public key with the Railway account (needed for
+  `railway ssh`); trusted `ssh.railway.com`'s host key after checking that its fingerprint
+  (`SHA256:+S1xg92FrnHz6pY3bpkmh1OGtWQGNANXilPzlxA7B1g`) matches the one reported on Railway's
+  community forum (Railway publishes no official fingerprint, so this is trust-on-first-use with a
+  cross-check, not host-key checking disabled); seeded production with `--allow-production`; ran
+  the failed-release test in a throwaway environment and deleted it.
+- **Human decided:** seed the live demo (synthetic data only); run the failed-release test in a
+  disposable environment, never production; accept the no-authentication limitation for the demo
+  and state it on the README.
+- **Caught during verification:**
+  - `id` over `railway ssh` reported root in both containers. Rather than accept or dismiss it,
+    the app processes were checked in `/proc`: backend PID 1 uvicorn runs as uid 10001 and nginx as
+    uid 101; only Railway's ssh session runs as root.
+  - The first `railway ssh` hung waiting on SSH's host-key prompt (no terminal in this tool); rerun
+    with a timeout it reported "Host key verification failed", which led to the fingerprint check
+    above.
+  - Creating an environment switches the CLI's linked environment; it was re-linked to `production`
+    immediately and every test command named its environment explicitly.
+- **Failed-release test:** `failtest` duplicated from production, given its own backend domain and a
+  literal CORS value; a healthy deploy (`/health` 200); `DATABASE_URL` then set to a wrong password
+  and redeployed from source: the new deployment **FAILED** in the release step (`password
+  authentication failed`, no "Uvicorn running" line) while the previous deployment stayed active
+  and `/health` returned 200 throughout. Environment deleted; production untouched (healthy, 26
+  leads, `railway config plan` "already up to date").
+- **Not directly observed:** a deployment visibly held back waiting for CI. `checkSuites` is
+  applied (the plan converged after it), and the post-CI deployments for the last push were
+  `SKIPPED` by watch paths; a backend or frontend change would show the wait explicitly.
+- **Housekeeping for the account owner:** delete the stray project `glorious-respect` created
+  during sign-up (not used by this deployment).

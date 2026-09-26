@@ -3,8 +3,32 @@
 Receives Meta Ads leads via webhook, stores them with an append-only audit trail, and displays them
 in a React dashboard.
 
-> **Work in progress.** Full architecture, deployment, trade-offs and scaling documentation will be
-> added as the build progresses. Design decisions and AI usage are recorded in [AGENT.md](AGENT.md).
+> **Work in progress.** Final architecture, trade-offs and scaling documentation is being completed.
+> Design decisions and AI usage are recorded in [AGENT.md](AGENT.md).
+
+## Live demo
+
+| | URL |
+|---|---|
+| **Dashboard** | https://frontend-production-ce70.up.railway.app |
+| **API** (OpenAPI docs) | https://backend-production-fa824.up.railway.app/docs |
+| **Health** | https://backend-production-fa824.up.railway.app/health |
+| **Webhook** | `POST https://backend-production-fa824.up.railway.app/webhook/meta-lead` |
+
+The deployment holds **synthetic demo data only** (25 seeded leads with an audit trail, created
+through the application's own services). The dashboard and its API have **no authentication**
+(out of scope for this assignment; see [Known Limitations](AGENT.md#known-limitations--deliberate-scope)): anyone with the URL can
+change a lead's status, which is acceptable only because the data is synthetic.
+
+Sending a signed webhook to production requires the production `META_APP_SECRET` (held in Railway,
+never in this repository):
+
+```bash
+META_APP_SECRET=<production secret> python backend/scripts/send_test_webhook.py \
+  --url https://backend-production-fa824.up.railway.app/webhook/meta-lead
+```
+
+Without the right secret the API answers `401 INVALID_SIGNATURE`.
 
 ## Stack
 
@@ -626,6 +650,24 @@ happen once per deploy rather than once per replica, and a failed migration stop
 traffic moves. The entrypoint supports both: `RUN_MIGRATIONS_ON_START` toggles the start-up
 migration, and a command passed to the container (the release step) runs instead of the server.
 
+### Live verification (2026-09-26)
+
+| Check | Result |
+|---|---|
+| Builds | both loaded their own Dockerfile (`backend/Dockerfile`, `frontend/Dockerfile`), not Railpack |
+| Release step | ran `alembic upgrade head` in its own container; `alembic current` in the live backend: `315288742ea3 (head)`; the app then logged "skipping migrations at start" |
+| Processes | backend PID 1 is uvicorn as uid 10001; frontend nginx as uid 101 (Railway's `ssh` sessions themselves run as root) |
+| Database | PostgreSQL **18.6** (Railway's `postgres-ssl:18`; local and CI use 17.11, standard features only); no public domain, no TCP proxy |
+| API | `/health` database ok; `/` → `https://…/docs` (proxy headers honoured); `/docs`, `/openapi.json` 200 |
+| Frontend | dashboard and deep links served; bundle calls the HTTPS backend; CSP `connect-src 'self' https://backend-production-fa824.up.railway.app` |
+| CORS | preflight for `PATCH` allowed only from the live dashboard origin; another origin 400; `localhost` origins not allowed in production |
+| Status change | `PATCH` from the live origin recorded `NEW → CONTACTED`, shown on the live timeline |
+| Webhook | real secret → `processed`, same event → `duplicate`; local `change-me` secret → `401`; Meta handshake echoes the challenge for the real token, 403 otherwise |
+| Seed | refused without `--allow-production`; run 1: 25 created, 4 updated, 1 unchanged, 39 status changes; run 2: 30 duplicates, nothing written |
+| Logs | JSON, parsed by Railway into fields; zero occurrences of test lead name/email/phone |
+| Watch paths | a push touching only `.railway/` and docs produced `SKIPPED` deployments for both services |
+| **Failed release step** | in a throwaway `failtest` environment (duplicate of production, deleted afterwards): a healthy deploy, then `DATABASE_URL` broken and redeployed; the new deploy **failed in the release step** (`password authentication failed`, uvicorn never started) while the previous deployment **kept serving** `/health` 200 throughout |
+
 ## Environment variables (backend)
 
 | Variable | Default | Purpose |
@@ -791,7 +833,7 @@ protection they guard is removed.
 - [x] Phase 11: Docker: pinned multi-stage backend and frontend images (non-root, migrations at
       start, graceful shutdown, nginx SPA serving with security headers), one-command compose,
       CI job that builds and smoke-tests the whole stack
-- [ ] Phase 12: Railway deployment
-  - [x] Infrastructure as Code (`.railway/railway.ts`), release-step migrations, entrypoint toggle
-  - [ ] Live deployment and verification
+- [x] Phase 12: Railway deployment (live): Infrastructure as Code, release-step migrations, Wait
+      for CI, watch paths, private Postgres, production secrets, seeded demo data, live
+      verification including a failed-release test
 - [ ] Phase 13: final documentation
